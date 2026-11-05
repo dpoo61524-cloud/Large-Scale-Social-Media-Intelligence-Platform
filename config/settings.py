@@ -6,7 +6,7 @@ without exposing sensitive secrets in logs or application output.
 
 import os
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 # Base project directory
@@ -28,17 +28,17 @@ class AppConfig:
 
     # API Keys & Credentials (kept private, never exposed)
     reddit_client_id: str
-    reddit_client_secret: str
+    reddit_client_secret: str = field(repr=False)
     reddit_user_agent: str
-    youtube_api_key: str
+    youtube_api_key: str = field(repr=False)
 
     # Database & Search engine connections
     neo4j_uri: str
     neo4j_username: str
-    neo4j_password: str
+    neo4j_password: str = field(repr=False)
     elasticsearch_host: str
     elasticsearch_username: str
-    elasticsearch_password: str
+    elasticsearch_password: str = field(repr=False)
     kibana_host: str
 
     def get_safe_summary(self) -> dict:
@@ -52,16 +52,26 @@ class AppConfig:
             "raw_data_path": str(self.raw_data_path),
             "processed_data_path": str(self.processed_data_path),
             "models_path": str(self.models_path),
-            "reddit_configured": bool(self.reddit_client_id and self.reddit_client_secret),
-            "youtube_configured": bool(self.youtube_api_key),
-            "neo4j_configured": bool(self.neo4j_uri and self.neo4j_password),
-            "elasticsearch_configured": bool(self.elasticsearch_host),
+            "reddit_configured": _is_configured(self.reddit_client_id) and _is_configured(self.reddit_client_secret),
+            "youtube_configured": _is_configured(self.youtube_api_key),
+            "neo4j_configured": _is_configured(self.neo4j_uri) and _is_configured(self.neo4j_password),
+            "elasticsearch_configured": _is_configured(self.elasticsearch_password) and _is_configured(self.elasticsearch_host),
         }
+
+
+def _is_configured(value: str | None) -> bool:
+    """Checks whether a setting contains a real, non-placeholder value."""
+    if not value:
+        return False
+    stripped = value.strip()
+    if not stripped or stripped.lower().startswith("your_"):
+        return False
+    return True
 
 
 def _mask_presence(value: str | None) -> str:
     """Helper to check if a secret is provided without revealing it."""
-    return "Set" if bool(value and not value.startswith("your_")) else "Not Set"
+    return "Set" if _is_configured(value) else "Not Set"
 
 
 def load_config(env_path: Path | None = None) -> AppConfig:

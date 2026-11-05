@@ -3,7 +3,6 @@
 Main entry point for the platform foundation (Block 1).
 """
 
-import sys
 from config.settings import load_config
 
 

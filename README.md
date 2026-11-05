@@ -46,7 +46,7 @@ The planned stack is aligned directly with the project roadmap:
 ## 4. Project Structure
 
 ```text
-social_media_intelligence/
+Large-Scale Social Media Intelligence Platform/
 │
 ├── app.py                  # Main entry point and status inspection
 ├── requirements.txt        # Python dependency manifest
