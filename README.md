@@ -1,4 +1,5 @@
 # Large Scale Social Media Intelligence Platform
+*(Repository: [Large-Scale-Social-Media-Intelligence-Platform](https://github.com/dpoo61524-cloud/Large-Scale-Social-Media-Intelligence-Platform))*
 
 An end-to-end data science and engineering platform designed to ingest, clean, analyze, and visualize high-volume social media data from **Reddit** and **YouTube**.
 
