@@ -1,0 +1,5 @@
+# Core Foundation Dependencies
+python-dotenv>=1.0.0
+
+# Testing & Validation
+pytest>=7.4.0
