@@ -11,3 +11,7 @@ torch>=2.1.0
 
 # Step 4: Topic Modeling & Temporal Evolution
 bertopic>=0.16.0
+
+# Step 5: Graph Analytics & Neo4j Integration
+networkx>=3.0
+neo4j>=5.15.0
