@@ -3,6 +3,8 @@
 # ==========================================
 venv/
 .venv/
+venv-spark/
+hadoop/
 env/
 ENV/
 env.bak/
@@ -39,6 +41,7 @@ data/processed/*
 !data/processed/.gitkeep
 *.csv
 *.json
+!data/sample_reddit_posts.json
 *.parquet
 *.tsv
 *.zip
