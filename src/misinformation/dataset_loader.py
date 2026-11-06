@@ -1,8 +1,14 @@
 """LIAR Benchmark Dataset Loader.
 
 Supports ingestion of standard LIAR TSV and JSON datasets, label mapping
-(6-class fine-grained and binary targets), and embedded sample benchmark
-fallback for offline testing.
+(6-class fine-grained and binary targets), and embedded development fixture
+fallback for deterministic offline testing.
+
+Important Scope Note:
+- The embedded sample of 24 statements is an offline development test fixture,
+  not the official LIAR benchmark (which contains 12,836 statements).
+- Official benchmark evaluation requires an external LIAR dataset path supplied
+  by the user; data/raw/ is never read, modified, or accessed.
 """
 
 from __future__ import annotations

@@ -13,11 +13,10 @@ from src.misinformation.feature_extractor import (
 def test_stylometric_signals_calculation() -> None:
     extractor = LinguisticFeatureExtractor()
 
-    # Normal text
+    # Normal English text
     text_normal = "The committee reviewed the fiscal budget today."
     style_normal = extractor.extract_single_stylometrics(text_normal)
     assert len(style_normal) == len(STYLOMETRIC_FEATURE_NAMES)
-    # Check bounds
     assert 0.0 <= style_normal[0] <= 1.0  # uppercase char ratio
     assert style_normal[1] == 0.0  # exclamation count
     assert style_normal[2] == 0.0  # question count
@@ -37,17 +36,33 @@ def test_stylometric_signals_calculation() -> None:
     assert style_punct[2] > 0.0  # question intensity
 
 
-def test_stylometrics_edge_cases() -> None:
+def test_stylometrics_sanitization_and_edge_cases() -> None:
     extractor = LinguisticFeatureExtractor()
+
+    # None input must return an 8-element zero vector (must NOT become "None")
+    style_none = extractor.extract_single_stylometrics(None)
+    assert len(style_none) == len(STYLOMETRIC_FEATURE_NAMES)
+    assert np.all(style_none == 0.0)
 
     # Empty string
     style_empty = extractor.extract_single_stylometrics("")
-    assert len(style_empty) == len(STYLOMETRIC_FEATURE_NAMES)
-    assert not np.any(np.isnan(style_empty))
+    assert np.all(style_empty == 0.0)
 
-    # Spaces and non-alphanumeric
-    style_spaces = extractor.extract_single_stylometrics("   ... ???   ")
-    assert not np.any(np.isnan(style_spaces))
+    # Whitespace-only string
+    style_spaces = extractor.extract_single_stylometrics("   \t\n   ")
+    assert np.all(style_spaces == 0.0)
+
+    # Numeric-only text
+    style_numeric = extractor.extract_single_stylometrics("12345 67890")
+    assert not np.any(np.isnan(style_numeric))
+    assert style_numeric[6] > 0.8  # digits ratio
+    assert style_numeric[3] == 2.0  # 2 numeric word tokens
+
+    # Punctuation-only text
+    style_punct = extractor.extract_single_stylometrics("!!! ??? !!!")
+    assert not np.any(np.isnan(style_punct))
+    assert style_punct[3] == 0.0  # word count = 0
+    assert style_punct[1] > 0.0  # exclamation count captured
 
 
 def test_hybrid_feature_extraction_fit_transform() -> None:
@@ -69,11 +84,18 @@ def test_hybrid_feature_extraction_fit_transform() -> None:
     assert len(feature_names) == features.shape[1]
     assert any(name.startswith("style__") for name in feature_names)
 
-    # Transform new text
-    test_text = ["New fiscal policy proposed by senate."]
+    # Transform new text including empty string
+    test_text = ["New fiscal policy proposed by senate.", ""]
     test_features = extractor.transform(test_text)
-    assert test_features.shape[0] == 1
+    assert test_features.shape[0] == 2
     assert test_features.shape[1] == features.shape[1]
+
+
+def test_empty_vocabulary_handling() -> None:
+    extractor = LinguisticFeatureExtractor()
+    # All punctuation/whitespace texts contain no alphanumeric vocabulary
+    with pytest.raises(ValueError, match="no valid vocabulary tokens"):
+        extractor.fit(["   ", "!!! ???", "..."])
 
 
 def test_extractor_without_stylometrics() -> None:

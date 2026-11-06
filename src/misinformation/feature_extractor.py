@@ -2,6 +2,14 @@
 
 Combines n-gram TF-IDF textual features with dense stylometric and credibility
 signals (punctuation intensity, casing distributions, sensationalism metrics).
+
+Limitations & Documentation:
+- Lexical subjectivity indicators rely on a keyword lexicon (SENSATIONAL_LEXICON).
+  This lexicon is English-oriented, context-blind (cannot distinguish debunking
+  statements from genuine sensationalism), and negation-blind ("not a conspiracy"
+  scores identically to "a conspiracy").
+- Stylometric signals serve as supplementary heuristic signals alongside TF-IDF,
+  not conclusive proof of veracity.
 """
 
 from __future__ import annotations
@@ -17,7 +25,7 @@ from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
-# Sensationalist and clickbait indicator lexical terms
+# Sensationalist and clickbait indicator lexical terms (English-oriented)
 SENSATIONAL_LEXICON = {
     "shocking",
     "unbelievable",
@@ -85,55 +93,72 @@ class LinguisticFeatureExtractor:
         self._is_fitted = False
 
     @staticmethod
-    def extract_single_stylometrics(text: str) -> np.ndarray:
-        """Extract dense stylometric feature vector for a single text string.
+    def extract_single_stylometrics(text: Any) -> np.ndarray:
+        """Extract dense stylometric feature vector for a single text input.
+
+        Sanitization & Edge Cases:
+        - None, non-string, empty, or whitespace-only inputs return an 8-element zero vector.
+        - Punctuation-only and numeric-only strings are handled consistently without NaN.
 
         Features:
         1. uppercase_char_ratio: uppercase chars / total chars
-        2. exclamation_intensity: count('!') / total words
-        3. question_intensity: count('?') / total words
-        4. word_count: total word tokens
+        2. exclamation_intensity: count('!') / total words (or total chars if no words)
+        3. question_intensity: count('?') / total words (or total chars if no words)
+        4. word_count: total word tokens found
         5. avg_word_length: average character length per word
         6. lexical_subjectivity_ratio: sensationalism keywords / total words
         7. digits_ratio: numeric chars / total chars
         8. all_caps_word_ratio: words with len > 1 in ALL CAPS / total words
         """
-        raw_text = text if isinstance(text, str) else str(text)
+        if text is None or not isinstance(text, str) or not text.strip():
+            return np.zeros(len(STYLOMETRIC_FEATURE_NAMES), dtype=np.float64)
+
+        raw_text = text.strip()
         total_chars = max(1, len(raw_text))
         words = re.findall(r"\b[\w'-]+\b", raw_text)
-        word_count = max(1, len(words))
+        num_words = len(words)
 
         uppercase_chars = sum(1 for c in raw_text if c.isupper())
         exclamations = raw_text.count("!")
         questions = raw_text.count("?")
         digits = sum(1 for c in raw_text if c.isdigit())
 
-        # Lengths and casing of individual tokens
-        word_lengths = [len(w) for w in words] if words else [0]
-        avg_word_len = float(sum(word_lengths)) / word_count
+        if num_words == 0:
+            # Text has characters (e.g. punctuation, symbols) but no word tokens
+            return np.array(
+                [
+                    float(uppercase_chars) / total_chars,
+                    float(exclamations),
+                    float(questions),
+                    0.0,
+                    0.0,
+                    0.0,
+                    float(digits) / total_chars,
+                    0.0,
+                ],
+                dtype=np.float64,
+            )
 
+        word_lengths = [len(w) for w in words]
+        avg_word_len = float(sum(word_lengths)) / num_words
         all_caps_words = sum(1 for w in words if len(w) > 1 and w.isupper())
-
-        # Lexical indicators
-        sensational_count = sum(
-            1 for w in words if w.lower() in SENSATIONAL_LEXICON
-        )
+        sensational_count = sum(1 for w in words if w.lower() in SENSATIONAL_LEXICON)
 
         return np.array(
             [
                 float(uppercase_chars) / total_chars,
-                float(exclamations) / word_count,
-                float(questions) / word_count,
-                float(len(words)),
+                float(exclamations) / num_words,
+                float(questions) / num_words,
+                float(num_words),
                 avg_word_len,
-                float(sensational_count) / word_count,
+                float(sensational_count) / num_words,
                 float(digits) / total_chars,
-                float(all_caps_words) / word_count,
+                float(all_caps_words) / num_words,
             ],
             dtype=np.float64,
         )
 
-    def extract_stylometric_matrix(self, texts: Sequence[str]) -> np.ndarray:
+    def extract_stylometric_matrix(self, texts: Sequence[Any]) -> np.ndarray:
         """Compute 2D stylometric feature matrix of shape (n_samples, n_stylometrics)."""
         if not texts:
             return np.empty((0, len(STYLOMETRIC_FEATURE_NAMES)), dtype=np.float64)
@@ -141,12 +166,30 @@ class LinguisticFeatureExtractor:
         return np.vstack(rows)
 
     def fit(self, texts: Sequence[str], y: Optional[Any] = None) -> LinguisticFeatureExtractor:
-        """Fit TF-IDF vocabulary and stylometric scaler on training texts."""
+        """Fit TF-IDF vocabulary and stylometric scaler on training texts.
+
+        Raises
+        ------
+        ValueError
+            If input text sequence is empty or contains no valid vocabulary words.
+        """
         if not texts:
             raise ValueError("Cannot fit LinguisticFeatureExtractor on empty text sequence.")
 
-        clean_texts = [str(t) if t else "" for t in texts]
-        self.tfidf_vectorizer.fit(clean_texts)
+        clean_texts = [str(t).strip() for t in texts if t is not None and isinstance(t, str) and t.strip()]
+        if not clean_texts:
+            raise ValueError(
+                "Cannot fit feature extractor: all input texts are empty or contain only whitespace."
+            )
+
+        try:
+            self.tfidf_vectorizer.fit(clean_texts)
+        except ValueError as exc:
+            if "empty vocabulary" in str(exc).lower():
+                raise ValueError(
+                    "Cannot fit feature extractor: texts contain no valid vocabulary tokens (only whitespace, stop words, or punctuation)."
+                ) from exc
+            raise
 
         if self.use_stylometrics:
             dense_stylometrics = self.extract_stylometric_matrix(clean_texts)
@@ -160,13 +203,13 @@ class LinguisticFeatureExtractor:
         if not self._is_fitted:
             raise RuntimeError("LinguisticFeatureExtractor must be fitted before calling transform.")
 
-        clean_texts = [str(t) if t else "" for t in texts]
+        clean_texts = [t.strip() if isinstance(t, str) else "" for t in texts]
         tfidf_features = self.tfidf_vectorizer.transform(clean_texts)
 
         if not self.use_stylometrics:
             return tfidf_features.tocsr()
 
-        dense_stylometrics = self.extract_stylometric_matrix(clean_texts)
+        dense_stylometrics = self.extract_stylometric_matrix(texts)
         scaled_stylometrics = self.stylometric_scaler.transform(dense_stylometrics)
         sparse_stylometrics = sparse.csr_matrix(scaled_stylometrics)
 

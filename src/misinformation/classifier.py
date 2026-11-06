@@ -3,13 +3,22 @@
 Provides balanced, calibrated classification with probability estimation,
 comprehensive performance evaluation (Precision, Recall, Macro F1, ROC-AUC),
 and persistence via Joblib.
+
+Statistical & Verification Notice:
+- Credibility scores and veracity classifications produced by this model are
+  statistical estimates based on text n-grams and stylometric heuristics.
+  They DO NOT constitute independent ground-truth factual verification.
+- Probability calibration via Platt scaling (CalibratedClassifierCV) requires
+  sufficient sample support per class (at least 5 samples per class). When sample
+  support is insufficient, the classifier falls back to standard LogisticRegression
+  probabilities with a documented `is_calibrated=False` flag.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import joblib
 import numpy as np
@@ -27,6 +36,8 @@ from sklearn.metrics import (
 
 logger = logging.getLogger(__name__)
 
+MIN_CALIBRATION_SAMPLES_PER_CLASS = 5
+
 
 class MisinformationClassifier:
     """Calibrated veracity classifier for fake news and misinformation detection."""
@@ -38,6 +49,7 @@ class MisinformationClassifier:
         calibration_cv: int = 3,
         c_penalty: float = 1.0,
         random_state: int = 42,
+        min_calibration_samples: int = MIN_CALIBRATION_SAMPLES_PER_CLASS,
     ) -> None:
         """Initialize classifier with regularized logistic loss and calibration settings."""
         self.class_weight = class_weight
@@ -45,6 +57,7 @@ class MisinformationClassifier:
         self.calibration_cv = calibration_cv
         self.c_penalty = c_penalty
         self.random_state = random_state
+        self.min_calibration_samples = min_calibration_samples
 
         self.base_model = LogisticRegression(
             C=self.c_penalty,
@@ -56,9 +69,10 @@ class MisinformationClassifier:
         self.model: Any = None
         self.classes_: np.ndarray = np.array([])
         self._is_fitted: bool = False
+        self.is_calibrated: bool = False
 
     def fit(self, X: Any, y: Sequence[int] | np.ndarray) -> MisinformationClassifier:
-        """Fit calibrated classifier on feature matrix X and target labels y.
+        """Fit classifier on feature matrix X and ground truth labels y.
 
         Parameters
         ----------
@@ -81,8 +95,15 @@ class MisinformationClassifier:
 
         min_class_count = int(np.min(counts))
 
-        # Check if cross-validated calibration is feasible
-        if self.calibrate and min_class_count >= self.calibration_cv and self.calibration_cv >= 2:
+        # Check if cross-validated calibration is statistically viable and reliable
+        should_calibrate = (
+            self.calibrate
+            and min_class_count >= self.min_calibration_samples
+            and min_class_count >= self.calibration_cv
+            and self.calibration_cv >= 2
+        )
+
+        if should_calibrate:
             try:
                 calibrated = CalibratedClassifierCV(
                     estimator=self.base_model,
@@ -91,15 +112,26 @@ class MisinformationClassifier:
                 )
                 calibrated.fit(X, y_arr)
                 self.model = calibrated
+                self.is_calibrated = True
+                logger.debug("Successfully fitted CalibratedClassifierCV with cv=%d", self.calibration_cv)
             except Exception as e:
                 logger.warning(
                     f"CalibratedClassifierCV failed ({e}); falling back to standard balanced LogisticRegression."
                 )
                 self.base_model.fit(X, y_arr)
                 self.model = self.base_model
+                self.is_calibrated = False
         else:
+            if self.calibrate and min_class_count < self.min_calibration_samples:
+                logger.info(
+                    "Sample support per class too small for reliable Platt calibration "
+                    "(min_class_count=%d < %d threshold). Falling back to balanced LogisticRegression.",
+                    min_class_count,
+                    self.min_calibration_samples,
+                )
             self.base_model.fit(X, y_arr)
             self.model = self.base_model
+            self.is_calibrated = False
 
         self._is_fitted = True
         return self
@@ -111,7 +143,7 @@ class MisinformationClassifier:
         return self.model.predict(X)
 
     def predict_proba(self, X: Any) -> np.ndarray:
-        """Predict calibrated class probabilities for samples in X.
+        """Predict class probabilities for samples in X.
 
         Returns array of shape (n_samples, n_classes).
         """
@@ -125,7 +157,11 @@ class MisinformationClassifier:
         For binary classification (0=fake, 1=real):
             credibility = P(real) = proba[:, 1]
         For multi-class (0=pants-fire to 5=true):
-            credibility = normalized expected veracity value in [0.0, 1.0].
+            credibility = normalized expected veracity value in [0.0, 1.0]
+            computed via ordinal expectation sum(P(y=k) * k) / 5.0.
+
+        Note: Multi-class expected value is an ordinal heuristic and assumes uniform
+        interval spacing between adjacent veracity classes.
         """
         probas = self.predict_proba(X)
         if len(self.classes_) == 2 and 1 in self.classes_:
@@ -179,7 +215,7 @@ class MisinformationClassifier:
                 roc_auc = float(roc_auc_score(y_true, y_prob[:, real_idx]))
             except Exception as e:
                 logger.warning(f"Could not compute binary ROC-AUC: {e}")
-        elif len(self.classes_) > 2 and len(unique_test_classes) > 1:
+        elif len(self.classes_) > 2 and len(unique_test_classes) >= 2:
             try:
                 roc_auc = float(
                     roc_auc_score(
@@ -201,6 +237,7 @@ class MisinformationClassifier:
             "confusion_matrix": cm,
             "classes": self.classes_.tolist(),
             "roc_auc": roc_auc,
+            "is_calibrated": self.is_calibrated,
             "classification_report": report_dict,
         }
 
@@ -217,6 +254,8 @@ class MisinformationClassifier:
             "class_weight": self.class_weight,
             "calibrate": self.calibrate,
             "random_state": self.random_state,
+            "is_calibrated": self.is_calibrated,
+            "min_calibration_samples": self.min_calibration_samples,
         }
         joblib.dump(payload, target_path)
 
@@ -232,9 +271,11 @@ class MisinformationClassifier:
             class_weight=payload.get("class_weight", "balanced"),
             calibrate=payload.get("calibrate", True),
             random_state=payload.get("random_state", 42),
+            min_calibration_samples=payload.get("min_calibration_samples", MIN_CALIBRATION_SAMPLES_PER_CLASS),
         )
         classifier.model = payload["model"]
         classifier.base_model = payload.get("base_model", classifier.base_model)
         classifier.classes_ = np.asarray(payload["classes_"])
+        classifier.is_calibrated = payload.get("is_calibrated", False)
         classifier._is_fitted = True
         return classifier
