@@ -1,0 +1,112 @@
+[
+  {
+    "post_id": "t3_ds1001",
+    "subreddit": "datascience",
+    "title": "Best practices for cleaning multilingual social media text datasets?",
+    "text": "I am working on a social listening project involving both English and Spanish comments. What pipelines do you recommend for emoji handling and language identification?",
+    "author": "pipeline_builder",
+    "created_utc": 1730101200,
+    "score": 142,
+    "num_comments": 28,
+    "url": "https://reddit.com/r/datascience/comments/ds1001/best_practices_cleaning_multilingual_text"
+  },
+  {
+    "post_id": "t3_ai1002",
+    "subreddit": "MachineLearning",
+    "title": "Evaluating BERTopic on noisy social media streaming threads",
+    "text": "Has anyone evaluated BERTopic for dynamic topic discovery over short Twitter or Reddit comments? How does HDBSCAN clustering perform compared to LDA on micro-text?",
+    "author": "latent_space_explorer",
+    "created_utc": 1730104800,
+    "score": 389,
+    "num_comments": 64,
+    "url": "https://reddit.com/r/MachineLearning/comments/ai1002/evaluating_bertopic_noisy_social_media"
+  },
+  {
+    "post_id": "t3_py1003",
+    "subreddit": "Python",
+    "title": "Architecting clean modular ingestion pipelines without bloated frameworks",
+    "text": "Sharing my experience keeping initial data platform foundations lightweight. Using dataclasses, minimal dependencies, and strict .gitignore rules before scaling up to distributed tools.",
+    "author": "clean_coder_dev",
+    "created_utc": 1730108400,
+    "score": 215,
+    "num_comments": 37,
+    "url": "https://reddit.com/r/Python/comments/py1003/architecting_clean_modular_ingestion_pipelines"
+  },
+  {
+    "post_id": "t3_tech1004",
+    "subreddit": "technology",
+    "title": "How graph databases like Neo4j reveal coordination in online discourse",
+    "text": "Using PageRank and community detection algorithms on mention and reply networks helps distinguish organic trends from coordinated influence campaigns.",
+    "author": "graph_analyst_pro",
+    "created_utc": 1730112000,
+    "score": 530,
+    "num_comments": 92,
+    "url": "https://reddit.com/r/technology/comments/tech1004/how_graph_databases_reveal_coordination"
+  },
+  {
+    "post_id": "t3_nlp1005",
+    "subreddit": "LanguageTechnology",
+    "title": "Benchmark comparison: LIAR dataset vs FakeNewsNet for misinformation detection",
+    "text": "We ran a baseline classifier across the LIAR benchmark and observed that metadata features like source history provide stronger signals than pure linguistic tone.",
+    "author": "truth_tracker_ai",
+    "created_utc": 1730115600,
+    "score": 98,
+    "num_comments": 15,
+    "url": "https://reddit.com/r/LanguageTechnology/comments/nlp1005/benchmark_comparison_liar_vs_fakenewsnet"
+  },
+  {
+    "post_id": "t3_es1006",
+    "subreddit": "elasticsearch",
+    "title": "Designing Kibana dashboards for real-time sentiment alerts and keyword spikes",
+    "text": "Tips on index mapping and aggregation pipelines when streaming preprocessed social media records into Elasticsearch. Logstash vs direct REST indexing.",
+    "author": "elastic_architect",
+    "created_utc": 1730119200,
+    "score": 175,
+    "num_comments": 22,
+    "url": "https://reddit.com/r/elasticsearch/comments/es1006/designing_kibana_dashboards_real_time_sentiment"
+  },
+  {
+    "post_id": "t3_ds1007",
+    "subreddit": "datascience",
+    "title": "Handling rate limits and backoff strategies for public REST APIs",
+    "text": "When collecting public discussions from platforms like Reddit or YouTube, implementing exponential backoff and persistent token rotation prevents IP throttles.",
+    "author": "crawl_master_99",
+    "created_utc": 1730122800,
+    "score": 312,
+    "num_comments": 45,
+    "url": "https://reddit.com/r/datascience/comments/ds1007/handling_rate_limits_backoff_strategies"
+  },
+  {
+    "post_id": "t3_ai1008",
+    "subreddit": "artificial",
+    "title": "Multilingual sentiment analysis with modern open transformers",
+    "text": "Cross-lingual transfer learning has dramatically reduced the need for language-specific labeled sentiment sets. How do you evaluate zero-shot transfer reliability?",
+    "author": "transformer_nerd",
+    "created_utc": 1730126400,
+    "score": 420,
+    "num_comments": 58,
+    "url": "https://reddit.com/r/artificial/comments/ai1008/multilingual_sentiment_analysis_open_transformers"
+  },
+  {
+    "post_id": "t3_net1009",
+    "subreddit": "networkx",
+    "title": "Subreddit cross-posting dynamics: Stanford SNAP dataset exploration",
+    "text": "Visualizing the hyperlink network of subreddits using NetworkX reveals dense clusters between programming communities and data science hubs.",
+    "author": "network_viz_fan",
+    "created_utc": 1730130000,
+    "score": 267,
+    "num_comments": 31,
+    "url": "https://reddit.com/r/networkx/comments/net1009/subreddit_crossposting_stanford_snap_dataset"
+  },
+  {
+    "post_id": "t3_py1010",
+    "subreddit": "Python",
+    "title": "Automated unit tests for data ingestion: mocking files vs mock network calls",
+    "text": "A quick guide on using pytest tmp_path and monkeypatch to test ingestion pipelines completely offline without touching production data or hitting external APIs.",
+    "author": "qa_enthusiast_py",
+    "created_utc": 1730133600,
+    "score": 188,
+    "num_comments": 19,
+    "url": "https://reddit.com/r/Python/comments/py1010/automated_unit_tests_for_data_ingestion"
+  }
+]
