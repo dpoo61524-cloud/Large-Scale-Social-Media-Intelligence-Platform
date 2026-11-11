@@ -509,3 +509,22 @@ def test_methodology_disclosure_survives_promotion(tmp_path: Path) -> None:
     assert "protected_categories" in disc
 
 
+def test_kibana_ndjson_description_update() -> None:
+    """Verifies that config/kibana/social_intelligence_dashboards.ndjson contains the updated description."""
+    ndjson_path = Path("config/kibana/social_intelligence_dashboards.ndjson")
+    assert ndjson_path.exists()
+
+    found_lens = False
+    with open(ndjson_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            if obj.get("id") == "vis-misinfo-veracity-predictions":
+                found_lens = True
+                desc = obj.get("attributes", {}).get("description", "")
+                assert "heuristic-adjusted veracity predictions" in desc
+                assert "LIAR model" not in desc
+
+    assert found_lens is True
+
