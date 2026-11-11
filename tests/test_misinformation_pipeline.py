@@ -55,7 +55,7 @@ def test_misinformation_pipeline_mock_inputs(tmp_path: Path) -> None:
     )
 
     assert out_file.exists()
-    assert result["status"] == "success"
+    assert result["status"] in ("success", "partial")
     assert result["total_records_processed"] == 3
     assert result["total_analyzed"] == 3
     assert "average_credibility_score" in result
@@ -65,6 +65,9 @@ def test_misinformation_pipeline_mock_inputs(tmp_path: Path) -> None:
     assert "predictions" in result
     assert "reddit_records" in result
     assert "youtube_records" in result
+    assert "methodology_disclosure" in result
+    assert "nature_of_predictions" in result["methodology_disclosure"]
+    assert "credibility_score_definition" in result["methodology_disclosure"]
 
     # Check predictions structure
     predictions = result["predictions"]
@@ -79,6 +82,8 @@ def test_misinformation_pipeline_mock_inputs(tmp_path: Path) -> None:
         assert p["risk_tier"] in ("low", "moderate", "high_risk")
         assert "stylometric_signals" in p
         assert p["status"] == "success"
+        assert p["evidence_basis"] in ("low_risk", "potential_risk", "pattern_flagged_risk", "insufficient_evidence")
+        assert p["evidence_basis"] != "evidence_supported_risk"
 
     # Verify original fields preserved in enriched records
     assert len(result["reddit_records"]) == 2
@@ -170,7 +175,7 @@ def test_misinformation_pipeline_batch_inference_error_containment(tmp_path: Pat
         feature_extractor=FailingFeatureExtractor(),
     )
 
-    assert result["status"] == "success"
+    assert result["status"] in ("success", "partial")
     assert len(result["predictions"]) == 1
     assert result["predictions"][0]["status"] == "error"
     assert result["predictions"][0]["veracity_label"] == "undetermined"
@@ -194,7 +199,7 @@ def test_misinformation_pipeline_six_class_mode(tmp_path: Path) -> None:
         binary=False,
     )
 
-    assert result["status"] == "success"
+    assert result["status"] in ("success", "partial")
     preds = result["predictions"]
     valid_six_labels = {"pants-fire", "false", "barely-true", "half-true", "mostly-true", "true"}
     for p in preds:
@@ -247,7 +252,7 @@ def test_misinformation_pipeline_empty_inputs(tmp_path: Path) -> None:
     )
 
     assert out_file.exists()
-    assert result["status"] == "success"
+    assert result["status"] in ("success", "empty")
     assert result["total_records_processed"] == 0
     assert result["total_analyzed"] == 0
     assert result["average_credibility_score"] == 0.0
@@ -270,7 +275,7 @@ def test_misinformation_pipeline_on_workspace_processed_files(tmp_path: Path) ->
 
     assert out_file.exists()
     assert model_save.exists()
-    assert result["status"] == "success"
+    assert result["status"] in ("success", "partial")
     assert result["total_records_processed"] == 11  # 10 reddit posts + 1 youtube video
     assert result["total_analyzed"] == 11
     assert result["platform_breakdown"]["reddit"]["total_analyzed"] == 10
@@ -280,3 +285,154 @@ def test_misinformation_pipeline_on_workspace_processed_files(tmp_path: Path) ->
     assert result["benchmark_evaluation"] is not None
     assert result["benchmark_evaluation"]["evaluation_method"] == "stratified_cross_validation"
     assert result["benchmark_evaluation"]["is_development_fixture"] is True
+
+
+# ==============================================================================
+# Additional Tests: Source Discrimination, Status Semantics, Failure Handling
+# ==============================================================================
+
+def test_misinformation_pipeline_partial_source_missing_youtube(tmp_path: Path) -> None:
+    """Verifies that missing YouTube input produces 'partial' stage status while processing Reddit."""
+    reddit_data = [{"post_id": "r_part_1", "title_cleaned": "Scientific analysis of climate trends", "text_cleaned": "Text"}]
+    reddit_file = tmp_path / "reddit_part.json"
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+    out_file = tmp_path / "out_part.json"
+
+    result = run_misinformation_pipeline(
+        reddit_path=reddit_file,
+        youtube_path=tmp_path / "non_existent_yt.json",
+        output_path=out_file,
+    )
+
+    assert out_file.exists()
+    assert result["status"] == "partial"
+    assert result["provenance"]["reddit_status"] == "loaded"
+    assert result["provenance"]["youtube_status"] == "missing"
+    assert result["total_records_processed"] == 1
+    assert len(result["reddit_records"]) == 1
+    assert len(result["youtube_records"]) == 0
+
+
+def test_misinformation_pipeline_partial_source_corrupted_youtube(tmp_path: Path) -> None:
+    """Verifies that corrupted YouTube input produces 'partial' stage status while processing Reddit."""
+    reddit_data = [{"post_id": "r_part_2", "title_cleaned": "Astrophysics observations", "text_cleaned": "Text"}]
+    reddit_file = tmp_path / "reddit_part2.json"
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+
+    corrupted_yt = tmp_path / "corrupted_yt.json"
+    corrupted_yt.write_text("NOT VALID JSON {{{", encoding="utf-8")
+    out_file = tmp_path / "out_part_corrupt.json"
+
+    result = run_misinformation_pipeline(
+        reddit_path=reddit_file,
+        youtube_path=corrupted_yt,
+        output_path=out_file,
+    )
+
+    assert out_file.exists()
+    assert result["status"] == "partial"
+    assert result["provenance"]["reddit_status"] == "loaded"
+    assert result["provenance"]["youtube_status"] == "corrupted"
+    assert result["total_records_processed"] == 1
+
+
+def test_misinformation_pipeline_fatal_error_neither_source_available(tmp_path: Path) -> None:
+    """Verifies that when both sources are missing, pipeline produces diagnostic error and does NOT promote."""
+    out_file = tmp_path / "out_fatal.json"
+
+    result = run_misinformation_pipeline(
+        reddit_path=tmp_path / "missing_r.json",
+        youtube_path=tmp_path / "missing_y.json",
+        output_path=out_file,
+    )
+
+    assert result["status"] == "error"
+    assert result["total_records_processed"] == 0
+    # Fail-closed: Diagnostic error artifact must NOT be promoted to disk!
+    assert not out_file.exists()
+
+
+def test_misinformation_pipeline_deduplicates_duplicate_records(tmp_path: Path) -> None:
+    """Verifies that duplicate post_ids in upstream inputs are cleanly deduplicated."""
+    reddit_data = [
+        {"post_id": "dup_1", "title_cleaned": "First copy", "text_cleaned": "Text 1"},
+        {"post_id": "dup_1", "title_cleaned": "Second copy", "text_cleaned": "Text 2"},
+    ]
+    reddit_file = tmp_path / "dup_reddit.json"
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+    empty_yt = tmp_path / "empty_yt.json"
+    empty_yt.write_text(json.dumps([]), encoding="utf-8")
+    out_file = tmp_path / "out_dup.json"
+
+    result = run_misinformation_pipeline(
+        reddit_path=reddit_file,
+        youtube_path=empty_yt,
+        output_path=out_file,
+    )
+
+    assert result["status"] == "success"
+    assert result["total_records_processed"] == 1
+    assert len(result["reddit_records"]) == 1
+    assert result["reddit_records"][0]["post_id"] == "dup_1"
+
+
+def test_misinformation_pipeline_atomic_promotion_preserves_canonical_on_failure(tmp_path: Path) -> None:
+    """Verifies that an existing canonical artifact is untouched if validation or promotion fails."""
+    canonical_file = tmp_path / "canonical_results.json"
+    canonical_file.write_text('{"existing_canonical": "data_untouched"}', encoding="utf-8")
+
+    reddit_data = [{"post_id": "post_fail", "title_cleaned": "Some title", "text_cleaned": "Some text"}]
+    reddit_file = tmp_path / "fail_reddit.json"
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+    empty_yt = tmp_path / "empty_yt.json"
+    empty_yt.write_text(json.dumps([]), encoding="utf-8")
+
+    from unittest.mock import patch
+    from src.misinformation.misinformation_validator import MisinformationArtifactValidator
+
+    # Simulate validation failure before promotion
+    with patch.object(MisinformationArtifactValidator, "validate_misinformation_artifact", return_value=(False, ["Simulated error"])):
+        with pytest.raises(ValueError, match="validation failed"):
+            run_misinformation_pipeline(
+                reddit_path=reddit_file,
+                youtube_path=empty_yt,
+                output_path=canonical_file,
+            )
+
+    # Existing canonical file MUST remain completely intact
+    assert canonical_file.read_text(encoding="utf-8") == '{"existing_canonical": "data_untouched"}'
+
+    # Temporary files must be cleaned up
+    temp_files = list(tmp_path.glob(".tmp_*"))
+    assert len(temp_files) == 0
+
+
+def test_methodology_disclosure_survives_promotion(tmp_path: Path) -> None:
+    """Verifies methodology disclosure is persisted in promoted artifact file."""
+    reddit_data = [{"post_id": "r1", "title_cleaned": "Hello world", "text_cleaned": "Sample text", "author": "u1"}]
+    youtube_data = [{"video_id": "y1", "title_cleaned": "Video title", "description_cleaned": "Sample desc", "channel_title": "c1"}]
+
+    reddit_file = tmp_path / "reddit.json"
+    youtube_file = tmp_path / "youtube.json"
+    out_file = tmp_path / "misinfo.json"
+
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+    youtube_file.write_text(json.dumps(youtube_data), encoding="utf-8")
+
+    res = run_misinformation_pipeline(
+        reddit_path=reddit_file,
+        youtube_path=youtube_file,
+        output_path=out_file,
+        binary=True,
+    )
+    assert out_file.exists()
+    saved = json.loads(out_file.read_text(encoding="utf-8"))
+    assert "methodology_disclosure" in saved
+    disc = saved["methodology_disclosure"]
+    assert "nature_of_predictions" in disc
+    assert "credibility_score_definition" in disc
+    assert "verification_status" in disc
+    assert "classifier_limitations" in disc
+    assert "protected_categories" in disc
+
+
