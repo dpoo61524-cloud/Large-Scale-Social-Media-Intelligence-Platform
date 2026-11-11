@@ -407,6 +407,79 @@ def test_misinformation_pipeline_atomic_promotion_preserves_canonical_on_failure
     assert len(temp_files) == 0
 
 
+def test_misinformation_pipeline_downstream_stage10_compatibility(tmp_path: Path) -> None:
+    """End-to-end verification: Stage 10 data consolidator consumes Stage 9 output cleanly."""
+    from src.pipeline.consolidator import consolidate_social_intelligence
+
+    reddit_file = tmp_path / "r_base.json"
+    youtube_file = tmp_path / "y_base.json"
+    misinfo_file = tmp_path / "misinfo_out.json"
+    consolidated_file = tmp_path / "consolidated_out.json"
+
+    reddit_data = [
+        {
+            "post_id": "c_post_1",
+            "title_cleaned": "Best practices for cleaning multilingual social media text",
+            "text_cleaned": "I am working on social listening pipelines.",
+            "author": "pipeline_builder",
+            "score": 100,
+            "url": "https://reddit.com/r/data/1",
+            "preprocessing_status": "success",
+            "created_utc": 1730101200,
+            "collected_at": "2026-11-05T16:00:00Z",
+            "processed_at": "2026-11-05T16:30:00Z",
+        }
+    ]
+    youtube_data = [
+        {
+            "video_id": "c_vid_1",
+            "title_cleaned": "Introduction to Large Scale Social Media Intelligence",
+            "description_cleaned": "A comprehensive overview of NLP and graph databases.",
+            "channel_title": "Data Insights",
+            "channel_id": "UC_data_insights",
+            "view_count": 5000,
+            "url": "https://youtube.com/watch?v=1",
+            "preprocessing_status": "success",
+            "published_at": "2026-11-01T12:00:00Z",
+            "collected_at": "2026-11-05T16:00:00Z",
+            "processed_at": "2026-11-05T16:30:00Z",
+        }
+    ]
+
+    reddit_file.write_text(json.dumps(reddit_data), encoding="utf-8")
+    youtube_file.write_text(json.dumps(youtube_data), encoding="utf-8")
+
+    # Run Stage 9 pipeline
+    mis_result = run_misinformation_pipeline(
+        reddit_path=reddit_file,
+        youtube_path=youtube_file,
+        output_path=misinfo_file,
+        binary=True,
+    )
+    assert mis_result["status"] == "success"
+    assert misinfo_file.exists()
+
+    # Run Stage 10 data consolidator consuming Stage 9 artifact
+    cons_result = consolidate_social_intelligence(
+        reddit_processed_path=reddit_file,
+        youtube_processed_path=youtube_file,
+        misinformation_path=misinfo_file,
+        output_path=consolidated_file,
+    )
+
+    assert consolidated_file.exists()
+    assert len(cons_result["records"]) == 2
+
+    # Check that misinformation fields were cleanly populated for both platforms
+    for doc in cons_result["records"]:
+        assert doc["misinformation"]["status"] == "success"
+        assert doc["misinformation"]["veracity_label"] in ("real", "fake")
+        assert 0.0 <= doc["misinformation"]["credibility_score"] <= 1.0
+        assert doc["misinformation"]["risk_tier"] in ("low", "moderate", "high_risk")
+        assert doc["misinformation"]["stylometric_signals"] is not None
+        assert "misinformation" in doc["consolidation"]["sources_joined"]
+
+
 def test_methodology_disclosure_survives_promotion(tmp_path: Path) -> None:
     """Verifies methodology disclosure is persisted in promoted artifact file."""
     reddit_data = [{"post_id": "r1", "title_cleaned": "Hello world", "text_cleaned": "Sample text", "author": "u1"}]
