@@ -1,8 +1,12 @@
 """Neo4j Graph Manager & Cypher Batch Ingestion (Company Step 5).
 
-Manages Neo4j connections and builds batched, parameterized Cypher statements using UNWIND
-for scalable graph persistence. Supports mock driver/session injection for offline execution.
+Manages Neo4j connections, creates uniqueness constraints, builds parameterized Cypher
+statements using UNWIND and canonical node_id matching, and executes ingestion inside
+single explicit transactions with rollback guarantees. Supports mock driver/session
+injection for offline execution.
 """
+
+from __future__ import annotations
 
 import logging
 import os
@@ -22,20 +26,39 @@ class Neo4jGraphManager:
         self,
         uri: Optional[str] = None,
         user: Optional[str] = None,
+        username: Optional[str] = None,
         password: Optional[str] = None,
         driver_override: Optional[Any] = None,
     ) -> None:
         """Initializes Neo4jGraphManager.
 
+        Precedence for username resolution:
+        1. Explicit username argument
+        2. Explicit user argument (legacy)
+        3. NEO4J_USERNAME environment variable
+        4. NEO4J_USER environment variable
+        5. DEFAULT_NEO4J_USER default ("neo4j")
+
         Args:
             uri: Neo4j Bolt connection URI.
-            user: Neo4j username.
+            user: Neo4j username (legacy argument).
+            username: Neo4j username (preferred argument).
             password: Neo4j password.
             driver_override: Optional mock driver for offline testing.
         """
         self.uri = uri or os.getenv("NEO4J_URI", DEFAULT_NEO4J_URI)
-        self.user = user or os.getenv("NEO4J_USER", DEFAULT_NEO4J_USER)
-        self.password = password or os.getenv("NEO4J_PASSWORD", DEFAULT_NEO4J_PASSWORD)
+
+        explicit_user = username if username is not None else user
+        if explicit_user is not None:
+            self.user = explicit_user
+        else:
+            self.user = (
+                os.getenv("NEO4J_USERNAME")
+                or os.getenv("NEO4J_USER")
+                or DEFAULT_NEO4J_USER
+            )
+
+        self.password = password if password is not None else os.getenv("NEO4J_PASSWORD", DEFAULT_NEO4J_PASSWORD)
         self.driver_override = driver_override
         self._driver: Optional[Any] = driver_override
 
@@ -70,19 +93,68 @@ class Neo4jGraphManager:
             self._driver.close()
             self._driver = None
 
+    def ensure_constraints(self, session: Optional[Any] = None) -> str:
+        """Creates or ensures uniqueness constraint on User.node_id using modern Neo4j syntax.
+
+        Args:
+            session: Optional live or mock Neo4j session.
+
+        Returns:
+            The Cypher constraint statement executed.
+        """
+        query = (
+            "CREATE CONSTRAINT user_node_id_unique IF NOT EXISTS "
+            "FOR (u:User) REQUIRE u.node_id IS UNIQUE"
+        )
+        sess = session
+        close_session = False
+        if sess is None:
+            driver = self.get_driver()
+            sess = driver.session()
+            close_session = True
+
+        try:
+            sess.run(query)
+            return query
+        except Exception as exc:
+            logger.error("Failed to ensure Neo4j uniqueness constraint: %s", exc)
+            raise
+        finally:
+            if close_session and sess is not None and hasattr(sess, "close"):
+                sess.close()
+
     @staticmethod
     def build_user_unwind_query() -> str:
-        """Builds parameterized Cypher query for batched User node creation."""
+        """Builds parameterized Cypher query for batched User node creation using canonical node_id."""
         return (
             "UNWIND $batch AS row "
-            "MERGE (u:User {username: row.username}) "
-            "ON CREATE SET u.platform = row.platform, "
+            "MERGE (u:User {node_id: row.node_id}) "
+            "ON CREATE SET "
+            "u.platform = row.platform, "
+            "u.identity_type = row.identity_type, "
+            "u.username = row.username, "
+            "u.channel_id = row.channel_id, "
+            "u.channel_title = row.channel_title, "
+            "u.is_author = row.is_author, "
             "u.activity_count = row.activity_count, "
             "u.community_id = row.community_id, "
-            "u.influencer_score = row.influencer_score "
-            "ON MATCH SET u.activity_count = row.activity_count, "
+            "u.influencer_score = row.influencer_score, "
+            "u.pagerank = row.pagerank, "
+            "u.in_degree = row.in_degree, "
+            "u.betweenness = row.betweenness "
+            "ON MATCH SET "
+            "u.platform = row.platform, "
+            "u.identity_type = row.identity_type, "
+            "u.username = row.username, "
+            "u.channel_id = row.channel_id, "
+            "u.channel_title = row.channel_title, "
+            "u.is_author = row.is_author, "
+            "u.activity_count = row.activity_count, "
             "u.community_id = row.community_id, "
-            "u.influencer_score = row.influencer_score"
+            "u.influencer_score = row.influencer_score, "
+            "u.pagerank = row.pagerank, "
+            "u.in_degree = row.in_degree, "
+            "u.betweenness = row.betweenness"
         )
 
     @staticmethod
@@ -97,16 +169,18 @@ class Neo4jGraphManager:
 
     @staticmethod
     def build_relationship_unwind_query() -> str:
-        """Builds parameterized Cypher query for batched directed relationship creation."""
+        """Builds parameterized Cypher query for batched directed relationship creation using canonical node_id."""
         return (
             "UNWIND $batch AS row "
-            "MATCH (source:User {username: row.source}) "
-            "MATCH (target:User {username: row.target}) "
+            "MATCH (source:User {node_id: row.source}) "
+            "MATCH (target:User {node_id: row.target}) "
             "MERGE (source)-[r:INTERACTED_WITH]->(target) "
-            "ON CREATE SET r.weight = row.weight, "
+            "ON CREATE SET "
+            "r.weight = row.weight, "
             "r.platforms = row.platforms, "
             "r.interaction_types = row.interaction_types "
-            "ON MATCH SET r.weight = row.weight, "
+            "ON MATCH SET "
+            "r.weight = row.weight, "
             "r.platforms = row.platforms, "
             "r.interaction_types = row.interaction_types"
         )
@@ -116,47 +190,73 @@ class Neo4jGraphManager:
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]],
         batch_size: int = 500,
+        top_influencers: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         """Generates parameterized Cypher batches and execution plans for export or ingestion.
 
         Args:
-            nodes: List of user node dictionaries (with username, influencer_score, community_id).
+            nodes: List of complete user node dictionaries (with canonical node_id and community_id).
             edges: List of directed edge dictionaries (with source, target, weight, platforms).
             batch_size: Number of entities per parameterized batch.
+            top_influencers: Optional list of ranked influencer dictionaries to join ranking metrics.
 
         Returns:
             Dictionary containing Cypher queries, parameters, and batch counts.
         """
-        # Prepare node batches
-        node_batches: list[list[dict[str, Any]]] = []
-        clean_nodes = [
-            {
-                "username": str(n.get("username") or n.get("id")),
-                "platform": n.get("platform", "social"),
-                "activity_count": n.get("activity_count", 1),
-                "community_id": n.get("community_id", 0),
-                "influencer_score": n.get("influencer_score", 0.0),
-            }
-            for n in nodes
-        ]
+        # Build lookup of top influencer metrics by canonical node_id
+        inf_metrics_by_id: dict[str, dict[str, Any]] = {}
+        if top_influencers:
+            for inf in top_influencers:
+                inf_id = inf.get("node_id")
+                if inf_id:
+                    inf_metrics_by_id[inf_id] = inf
 
+        # Prepare clean node records
+        clean_nodes: list[dict[str, Any]] = []
+        for n in nodes:
+            nid = str(n.get("node_id") or n.get("id") or n.get("username") or "")
+            inf_data = inf_metrics_by_id.get(nid, {})
+
+            inf_score = n.get("influencer_score", inf_data.get("influencer_score", 0.0))
+            pr_score = n.get("pagerank", inf_data.get("pagerank", 0.0))
+            in_deg = n.get("in_degree", inf_data.get("in_degree_centrality", 0.0))
+            btw = n.get("betweenness", inf_data.get("betweenness_centrality", 0.0))
+
+            clean_nodes.append({
+                "node_id": nid,
+                "platform": n.get("platform", "social"),
+                "identity_type": n.get("identity_type", "account"),
+                "username": str(n.get("username", "") or nid),
+                "channel_id": n.get("channel_id"),
+                "channel_title": n.get("channel_title"),
+                "is_author": bool(n.get("is_author", False)),
+                "activity_count": int(n.get("activity_count", 0)),
+                "community_id": int(n.get("community_id", 0)),
+                "influencer_score": float(inf_score) if inf_score is not None else 0.0,
+                "pagerank": float(pr_score) if pr_score is not None else 0.0,
+                "in_degree": float(in_deg) if in_deg is not None else 0.0,
+                "betweenness": float(btw) if btw is not None else 0.0,
+            })
+
+        node_batches: list[list[dict[str, Any]]] = []
         for i in range(0, len(clean_nodes), batch_size):
             node_batches.append(clean_nodes[i : i + batch_size])
 
-        # Prepare edge batches
-        edge_batches: list[list[dict[str, Any]]] = []
-        clean_edges = [
-            {
-                "source": str(e.get("source")),
-                "target": str(e.get("target")),
-                "weight": int(e.get("weight", 1)),
-                "platforms": e.get("platforms", []),
-                "interaction_types": e.get("interaction_types", ["INTERACTION"]),
-            }
-            for e in edges
-            if e.get("source") and e.get("target")
-        ]
+        # Prepare clean edge records
+        clean_edges: list[dict[str, Any]] = []
+        for e in edges:
+            src = e.get("source")
+            tgt = e.get("target")
+            if src and tgt:
+                clean_edges.append({
+                    "source": str(src),
+                    "target": str(tgt),
+                    "weight": int(e.get("weight", 1)),
+                    "platforms": list(e.get("platforms", [])),
+                    "interaction_types": list(e.get("interaction_types", ["INTERACTION"])),
+                })
 
+        edge_batches: list[list[dict[str, Any]]] = []
         for i in range(0, len(clean_edges), batch_size):
             edge_batches.append(clean_edges[i : i + batch_size])
 
@@ -175,12 +275,22 @@ class Neo4jGraphManager:
         self,
         export_payload: dict[str, Any],
         session: Optional[Any] = None,
+        raise_on_error: bool = False,
     ) -> dict[str, Any]:
-        """Executes prepared Cypher batches against a live or mock Neo4j session.
+        """Executes prepared Cypher batches within a single explicit transaction.
+
+        Enforces all-or-nothing atomicity:
+        - Opens a session if not provided.
+        - Begins an explicit transaction.
+        - Executes all user batches followed by all relationship batches.
+        - Commits only when all batches succeed.
+        - Rolls back immediately on any error and reports 0 committed records.
+        - Closes session reliably.
 
         Args:
             export_payload: Payload returned by generate_cypher_export.
-            session: Optional Neo4j session instance (e.g. from driver or mock).
+            session: Optional live or mock Neo4j session.
+            raise_on_error: If True, re-raises the caught exception after rollback.
 
         Returns:
             Dictionary with execution summary counts and status.
@@ -191,38 +301,57 @@ class Neo4jGraphManager:
         rel_batches = export_payload.get("relationship_batches", [])
 
         sess = session
-        driver = None
+        close_session = False
         if sess is None:
             driver = self.get_driver()
             sess = driver.session()
+            close_session = True
 
-        executed_user_batches = 0
-        executed_rel_batches = 0
-
+        tx = None
         try:
+            # Begin single explicit transaction
+            if hasattr(sess, "begin_transaction"):
+                tx = sess.begin_transaction()
+            else:
+                tx = sess
+
             for b in user_batches:
-                sess.run(user_query, batch=b)
-                executed_user_batches += 1
+                tx.run(user_query, batch=b)
 
             for b in rel_batches:
-                sess.run(rel_query, batch=b)
-                executed_rel_batches += 1
+                tx.run(rel_query, batch=b)
+
+            if hasattr(tx, "commit"):
+                tx.commit()
+
+            return {
+                "status": "success",
+                "executed_user_batches": len(user_batches),
+                "executed_relationship_batches": len(rel_batches),
+                "total_nodes_ingested": export_payload.get("total_users", 0),
+                "total_edges_ingested": export_payload.get("total_relationships", 0),
+            }
+
         except Exception as exc:
-            logger.error("Cypher batch execution failed: %s", exc)
+            logger.error("Cypher batch transaction failed: %s", exc)
+            if tx is not None and hasattr(tx, "rollback"):
+                try:
+                    tx.rollback()
+                except Exception as rb_exc:
+                    logger.error("Failed to rollback Neo4j transaction: %s", rb_exc)
+
+            if raise_on_error:
+                raise
+
             return {
                 "status": "error",
                 "error": str(exc),
-                "executed_user_batches": executed_user_batches,
-                "executed_relationship_batches": executed_rel_batches,
+                "error_category": type(exc).__name__,
+                "executed_user_batches": 0,
+                "executed_relationship_batches": 0,
+                "total_nodes_ingested": 0,
+                "total_edges_ingested": 0,
             }
         finally:
-            if session is None and sess is not None and hasattr(sess, "close"):
+            if close_session and sess is not None and hasattr(sess, "close"):
                 sess.close()
-
-        return {
-            "status": "success",
-            "executed_user_batches": executed_user_batches,
-            "executed_relationship_batches": executed_rel_batches,
-            "total_nodes_ingested": export_payload.get("total_users", 0),
-            "total_edges_ingested": export_payload.get("total_relationships", 0),
-        }

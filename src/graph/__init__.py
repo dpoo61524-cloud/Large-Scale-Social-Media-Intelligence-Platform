@@ -4,10 +4,12 @@ from src.graph.graph_pipeline import run_graph_pipeline
 from src.graph.influencer_ranker import InfluencerRanker
 from src.graph.interaction_builder import InteractionGraphBuilder
 from src.graph.neo4j_connector import Neo4jGraphManager
+from src.graph.neo4j_pipeline import run_neo4j_persistence
 
 __all__ = [
     "InfluencerRanker",
     "InteractionGraphBuilder",
     "Neo4jGraphManager",
     "run_graph_pipeline",
+    "run_neo4j_persistence",
 ]

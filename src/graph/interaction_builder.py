@@ -2,7 +2,7 @@
 
 Extracts directed user-content and user-user interactions from Reddit and YouTube records.
 Filters anonymous/deleted entities and aggregates interaction frequencies into a weighted
-NetworkX directed graph (DiGraph).
+NetworkX directed graph (DiGraph) using platform-namespaced identities.
 """
 
 from collections import defaultdict
@@ -41,6 +41,34 @@ class InteractionGraphBuilder:
         self.exclude_anonymous = exclude_anonymous
         self.user_graph: nx.DiGraph = nx.DiGraph()
         self.full_graph: nx.DiGraph = nx.DiGraph()
+
+    @staticmethod
+    def make_reddit_user_id(username: str) -> str:
+        """Constructs canonical Reddit account node identifier."""
+        return f"reddit:user:{username.strip().lower()}"
+
+    @staticmethod
+    def make_youtube_creator_id(channel_id: str) -> str:
+        """Constructs canonical YouTube creator node identifier."""
+        return f"youtube:channel:{channel_id.strip()}"
+
+    @staticmethod
+    def make_youtube_mention_id(handle: str) -> str:
+        """Constructs canonical YouTube mention-only node identifier."""
+        return f"youtube:mention:{handle.strip().lower()}"
+
+    @staticmethod
+    def _resolve_deterministic_username(existing: Optional[str], incoming: Optional[str]) -> str:
+        """Selects a deterministic display name independent of encounter order.
+
+        Uses lexicographical minimum so that regardless of encounter order,
+        the exact same canonical casing is selected across records.
+        """
+        if not existing:
+            return incoming or ""
+        if not incoming:
+            return existing
+        return min(existing, incoming)
 
     @classmethod
     def is_valid_user(cls, username: Any) -> bool:
@@ -104,7 +132,7 @@ class InteractionGraphBuilder:
         reddit_list = reddit_records or []
         youtube_list = youtube_records or []
 
-        # Track user-to-user interactions: (source, target) -> {weight, interaction_types, platforms}
+        # Track user-to-user interactions: (source_id, target_id) -> {weight, types, platforms}
         user_edges: dict[tuple[str, str], dict[str, Any]] = defaultdict(
             lambda: {"weight": 0, "types": set(), "platforms": set()}
         )
@@ -115,69 +143,213 @@ class InteractionGraphBuilder:
                 continue
 
             author = post.get("author")
-            post_id = post.get("post_id", "unknown_post")
+            if not self.is_valid_user(author):
+                continue
+
+            author_clean = str(author).strip()
+            author_node_id = self.make_reddit_user_id(author_clean)
+            post_id = str(post.get("post_id", "unknown_post"))
             text_content = f"{post.get('title_cleaned', '')} {post.get('text_cleaned', '')} {post.get('title', '')} {post.get('text', '')}"
 
-            if self.is_valid_user(author):
-                author_clean = str(author).strip()
-                self._add_or_update_node(self.user_graph, author_clean, node_type="user", platform="reddit")
-                self._add_or_update_node(self.full_graph, author_clean, node_type="user", platform="reddit")
-                self._add_or_update_node(self.full_graph, post_id, node_type="content", platform="reddit", title=post.get("title_cleaned") or post.get("title"))
+            # Add or update Reddit author node
+            if self.user_graph.has_node(author_node_id):
+                self.user_graph.nodes[author_node_id]["is_author"] = True
+                self.user_graph.nodes[author_node_id]["activity_count"] += 1
+                existing_username = self.user_graph.nodes[author_node_id].get("username")
+                self.user_graph.nodes[author_node_id]["username"] = self._resolve_deterministic_username(
+                    existing_username, author_clean
+                )
+            else:
+                self.user_graph.add_node(
+                    author_node_id,
+                    node_id=author_node_id,
+                    platform="reddit",
+                    identity_type="account",
+                    is_author=True,
+                    username=author_clean,
+                    channel_id=None,
+                    channel_title=None,
+                    activity_count=1,
+                )
 
-                # Author -> Content edge
-                self.full_graph.add_edge(author_clean, post_id, relationship="POSTED", weight=1, platform="reddit")
+            # Full graph content edge
+            self.full_graph.add_node(
+                author_node_id,
+                node_id=author_node_id,
+                node_type="user",
+                platform="reddit",
+                identity_type="account",
+                username=self.user_graph.nodes[author_node_id]["username"],
+            )
+            self.full_graph.add_node(
+                post_id,
+                node_id=post_id,
+                node_type="content",
+                platform="reddit",
+                title=post.get("title_cleaned") or post.get("title"),
+            )
+            self.full_graph.add_edge(
+                author_node_id,
+                post_id,
+                relationship="POSTED",
+                weight=1,
+                platform="reddit",
+            )
 
-                # Extract mentions from post text: author -> mentioned_user
-                mentions = self.extract_mentions(text_content)
-                for mentioned in mentions:
-                    if mentioned.lower() != author_clean.lower() and self.is_valid_user(mentioned):
-                        self._add_or_update_node(self.user_graph, mentioned, node_type="user", platform="reddit")
-                        user_edges[(author_clean, mentioned)]["weight"] += 1
-                        user_edges[(author_clean, mentioned)]["types"].add("MENTIONED")
-                        user_edges[(author_clean, mentioned)]["platforms"].add("reddit")
+            # Extract mentions from post text
+            mentions = self.extract_mentions(text_content)
+            for mentioned in mentions:
+                m_clean = str(mentioned).strip()
+                if not self.is_valid_user(m_clean):
+                    continue
+
+                # Reddit self-mention check (case-insensitive)
+                if m_clean.lower() == author_clean.lower():
+                    continue
+
+                target_node_id = self.make_reddit_user_id(m_clean)
+
+                # Ensure mention target node exists without incrementing activity_count
+                if not self.user_graph.has_node(target_node_id):
+                    self.user_graph.add_node(
+                        target_node_id,
+                        node_id=target_node_id,
+                        platform="reddit",
+                        identity_type="account",
+                        is_author=False,
+                        username=m_clean,
+                        channel_id=None,
+                        channel_title=None,
+                        activity_count=0,
+                    )
+                else:
+                    existing_username = self.user_graph.nodes[target_node_id].get("username")
+                    self.user_graph.nodes[target_node_id]["username"] = self._resolve_deterministic_username(
+                        existing_username, m_clean
+                    )
+
+                user_edges[(author_node_id, target_node_id)]["weight"] += 1
+                user_edges[(author_node_id, target_node_id)]["types"].add("MENTIONED")
+                user_edges[(author_node_id, target_node_id)]["platforms"].add("reddit")
 
         # 2. Process YouTube records
         for video in youtube_list:
             if not isinstance(video, dict):
                 continue
 
-            channel_title = video.get("channel_title") or video.get("channel_id")
-            video_id = video.get("video_id", "unknown_video")
+            raw_channel_id = video.get("channel_id")
+            raw_channel_title = video.get("channel_title")
+
+            # Determine authoritative channel_id (never fall back to channel_title)
+            channel_id = str(raw_channel_id).strip() if (isinstance(raw_channel_id, str) and raw_channel_id.strip()) else ""
+            if not channel_id:
+                continue
+
+            channel_title = str(raw_channel_title).strip() if (isinstance(raw_channel_title, str) and raw_channel_title.strip()) else None
+            display_name = channel_title if channel_title else channel_id
+
+            if not self.is_valid_user(display_name):
+                continue
+
+            creator_node_id = self.make_youtube_creator_id(channel_id)
+            video_id = str(video.get("video_id", "unknown_video"))
             desc_content = f"{video.get('title_cleaned', '')} {video.get('description_cleaned', '')}"
 
-            if self.is_valid_user(channel_title):
-                creator_clean = str(channel_title).strip()
-                self._add_or_update_node(self.user_graph, creator_clean, node_type="user", platform="youtube")
-                self._add_or_update_node(self.full_graph, creator_clean, node_type="user", platform="youtube")
-                self._add_or_update_node(self.full_graph, video_id, node_type="content", platform="youtube", title=video.get("title_cleaned") or video.get("title"))
+            # Add or update YouTube creator node
+            if self.user_graph.has_node(creator_node_id):
+                self.user_graph.nodes[creator_node_id]["activity_count"] += 1
+                existing_title = self.user_graph.nodes[creator_node_id].get("channel_title")
+                if channel_title:
+                    resolved_title = self._resolve_deterministic_username(existing_title, channel_title)
+                    self.user_graph.nodes[creator_node_id]["channel_title"] = resolved_title
+                    self.user_graph.nodes[creator_node_id]["username"] = resolved_title
+            else:
+                self.user_graph.add_node(
+                    creator_node_id,
+                    node_id=creator_node_id,
+                    platform="youtube",
+                    identity_type="creator",
+                    is_author=True,
+                    username=display_name,
+                    channel_id=channel_id,
+                    channel_title=channel_title,
+                    activity_count=1,
+                )
 
-                self.full_graph.add_edge(creator_clean, video_id, relationship="POSTED", weight=1, platform="youtube")
+            # Full graph content edge
+            self.full_graph.add_node(
+                creator_node_id,
+                node_id=creator_node_id,
+                node_type="user",
+                platform="youtube",
+                identity_type="creator",
+                username=self.user_graph.nodes[creator_node_id]["username"],
+            )
+            self.full_graph.add_node(
+                video_id,
+                node_id=video_id,
+                node_type="content",
+                platform="youtube",
+                title=video.get("title_cleaned") or video.get("title"),
+            )
+            self.full_graph.add_edge(
+                creator_node_id,
+                video_id,
+                relationship="POSTED",
+                weight=1,
+                platform="youtube",
+            )
 
-                # Mentions in video title / description
-                mentions = self.extract_mentions(desc_content)
-                for mentioned in mentions:
-                    if mentioned.lower() != creator_clean.lower() and self.is_valid_user(mentioned):
-                        self._add_or_update_node(self.user_graph, mentioned, node_type="user", platform="youtube")
-                        user_edges[(creator_clean, mentioned)]["weight"] += 1
-                        user_edges[(creator_clean, mentioned)]["types"].add("MENTIONED")
-                        user_edges[(creator_clean, mentioned)]["platforms"].add("youtube")
+            # Mentions in video title / description
+            mentions = self.extract_mentions(desc_content)
+            for mentioned in mentions:
+                m_clean = str(mentioned).strip()
+                if not self.is_valid_user(m_clean):
+                    continue
 
-        # Populate user graph edges
+                mention_node_id = self.make_youtube_mention_id(m_clean)
+
+                # Ensure mention target node exists without incrementing activity_count
+                if not self.user_graph.has_node(mention_node_id):
+                    self.user_graph.add_node(
+                        mention_node_id,
+                        node_id=mention_node_id,
+                        platform="youtube",
+                        identity_type="mention",
+                        is_author=False,
+                        username=m_clean,
+                        channel_id=None,
+                        channel_title=None,
+                        activity_count=0,
+                    )
+                else:
+                    existing_username = self.user_graph.nodes[mention_node_id].get("username")
+                    self.user_graph.nodes[mention_node_id]["username"] = self._resolve_deterministic_username(
+                        existing_username, m_clean
+                    )
+
+                user_edges[(creator_node_id, mention_node_id)]["weight"] += 1
+                user_edges[(creator_node_id, mention_node_id)]["types"].add("MENTIONED")
+                user_edges[(creator_node_id, mention_node_id)]["platforms"].add("youtube")
+
+        # Populate user graph edges with sorted attributes
         for (src, tgt), data in user_edges.items():
+            sorted_types = sorted(list(data["types"]))
+            sorted_platforms = sorted(list(data["platforms"]))
             self.user_graph.add_edge(
                 src,
                 tgt,
                 weight=data["weight"],
-                interaction_types=list(data["types"]),
-                platforms=list(data["platforms"]),
+                interaction_types=sorted_types,
+                platforms=sorted_platforms,
             )
             self.full_graph.add_edge(
                 src,
                 tgt,
                 relationship="INTERACTED_WITH",
                 weight=data["weight"],
-                interaction_types=list(data["types"]),
-                platforms=list(data["platforms"]),
+                interaction_types=sorted_types,
+                platforms=sorted_platforms,
             )
 
         logger.info(
@@ -192,25 +364,35 @@ class InteractionGraphBuilder:
     def _add_or_update_node(graph: nx.DiGraph, node_id: str, **attrs: Any) -> None:
         """Adds a node or updates its activity count if already present."""
         if graph.has_node(node_id):
-            graph.nodes[node_id]["activity_count"] = graph.nodes[node_id].get("activity_count", 1) + 1
+            graph.nodes[node_id]["activity_count"] = graph.nodes[node_id].get("activity_count", 0) + 1
+            for k, v in attrs.items():
+                if k not in graph.nodes[node_id] or graph.nodes[node_id][k] is None:
+                    graph.nodes[node_id][k] = v
         else:
             graph.add_node(node_id, activity_count=1, **attrs)
 
     def get_nodes(self) -> list[dict[str, Any]]:
-        """Returns structured list of user graph nodes."""
+        """Returns structured list of user graph nodes sorted deterministically."""
         nodes: list[dict[str, Any]] = []
         for node_id, attrs in self.user_graph.nodes(data=True):
             entry = dict(attrs)
             entry["id"] = node_id
+            entry["node_id"] = node_id
             nodes.append(entry)
+        nodes.sort(key=lambda x: str(x.get("node_id", "")))
         return nodes
 
     def get_edges(self) -> list[dict[str, Any]]:
-        """Returns structured list of user graph edges."""
+        """Returns structured list of user graph edges sorted deterministically."""
         edges: list[dict[str, Any]] = []
         for src, tgt, attrs in self.user_graph.edges(data=True):
             entry = dict(attrs)
             entry["source"] = src
             entry["target"] = tgt
+            if "platforms" in entry and isinstance(entry["platforms"], (list, set)):
+                entry["platforms"] = sorted(list(set(entry["platforms"])))
+            if "interaction_types" in entry and isinstance(entry["interaction_types"], (list, set)):
+                entry["interaction_types"] = sorted(list(set(entry["interaction_types"])))
             edges.append(entry)
+        edges.sort(key=lambda x: (str(x.get("source", "")), str(x.get("target", ""))))
         return edges
