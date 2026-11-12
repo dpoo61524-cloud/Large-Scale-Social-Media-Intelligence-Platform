@@ -12,13 +12,13 @@ The platform provides a modular, contract-driven architecture capable of process
 ### Core Capabilities
 * **Multi-Source Ingestion**: Native OAuth2 and API v3 data collection for Reddit and YouTube with automatic fallback to offline development fixtures.
 * **Text Preprocessing**: Robust text normalization, demojization, entity unescaping, and language identification.
-* **Multilingual Sentiment Tracking**: Transformer-based sentiment polarity inference (`cardiffnlp/twitter-roberta-base-sentiment-latest`) with non-destructive preservation of unsupported records.
+* **Multilingual Sentiment Tracking**: Transformer-based sentiment polarity inference (`cardiffnlp/twitter-xlm-roberta-base-sentiment-multilingual`) with non-destructive preservation of unsupported records.
 * **Dynamic Topic Discovery**: BERTopic theme extraction with deterministic outlier classification (`topic_id: -1`, `topic_status: "outlier"`).
 * **Interaction Graph Modeling**: Structural network analysis (PageRank, betweenness centrality, degree metrics) and Neo4j Cypher persistence.
 * **Heuristic Misinformation Risk Assessment**: Stylometric feature extraction and LIAR benchmark machine learning classification producing heuristic risk indices.
 * **Multi-Source Intelligence Consolidation**: Strict Schema-v2 record unification merging Reddit and YouTube signals into canonical intelligence records.
 * **Search & Analytics Indexing**: Elasticsearch bulk indexing adapter with strict type mappings, field sanitization, and indexing manifest tracking.
-* **Dashboard Validation & Deployment**: Structural validation and HTTP import bundle for 41 Kibana saved objects (dashboards, visualizations, search views).
+* **Dashboard Validation & Deployment**: Structural validation and HTTP import bundle for 41 Kibana saved objects (5 dashboards, 34 Lens visualizations, 1 methodology panel, 1 data view).
 * **Unified Pipeline Orchestration**: 12-stage linear pipeline executor (`--run-all`) with isolated run directories (`data/runs/<run_id>/`), OS-level advisory concurrency locking, single-platform graceful degradation, and exception-safe atomic canonical promotion.
 
 ---
@@ -198,18 +198,37 @@ By default, the manifest is saved to `data/runs/<run_id>/manifest.json` and mirr
 python app.py --run-all --manifest-path data/runs/my_custom_manifest.json
 ```
 
+#### Traced Offline Execution & External Service Boundaries
+The unified pipeline (`--run-all`) is **not a guaranteed offline-success command**. Traced through its execution contract:
+* **Stage 8 (Neo4j Persistence)**: Connects to a live Neo4j database endpoint. If unconfigured or unreachable, it fails closed unless explicitly bypassed via `--skip-neo4j`.
+* **Stage 11 (Elasticsearch Indexing)**: Requires a reachable Elasticsearch service and the optional Elasticsearch client (`requirements-live.txt`). The CLI currently does **not** provide a `--skip-elasticsearch` option; running offline will fail Stage 11 on cluster ping or missing dependency.
+* **Stage 10 (Single-Platform Consolidation)**: Skipping YouTube ingestion (via `--skip-youtube` or unconfigured API credentials) causes Stage 10 consolidation status to evaluate to `partial` (`reason: "single_platform_execution"`).
+* **Process Exit Code Contract**: Any failed or partial stage causes the orchestration manifest outcome to be non-successful (`failed` or `partial`), resulting in process exit code `1`. Consequently, the entire 12-stage pipeline has **not** been demonstrated to pass end-to-end with exit code `0` in a strictly offline environment.
+
 ### 6.2 Standalone Execution Commands (Legacy Actions)
 
-Individual components can be invoked directly for focused testing or manual batch processing:
-```bash
-# Ingest mock Reddit dataset into data/raw/
-python app.py --ingest-reddit
-python app.py --ingest                 # Alias for --ingest-reddit
+Individual components can be invoked directly for focused testing, offline validation, or manual batch processing:
 
-# Ingest live Reddit posts via OAuth2 API
+#### Dedicated Offline Demonstrations
+* **Offline Kibana Bundle Validation (Stage 12)**:
+  ```bash
+  python app.py --validate-kibana
+  ```
+  Validates the local saved-object bundle (`config/kibana/social_intelligence_dashboards.ndjson`), its internal reference graph, and Schema-v2 index mappings offline **without requiring a live Kibana service**. *(Requires the standard project Python environment).*
+
+* **Offline Reddit Mock Ingestion (Stage 1)**:
+  ```bash
+  python app.py --ingest-reddit
+  python app.py --ingest                 # Alias for --ingest-reddit
+  ```
+  Uses the local synthetic sample fixture (`data/sample_reddit_posts.json`) to simulate Reddit ingestion without external API calls. Writes normalized raw posts to the configured local storage location (`data/raw/reddit_posts.json`).
+
+#### Live External Ingestion & Processing Commands
+```bash
+# Ingest live Reddit posts via OAuth2 API (requires REDDIT_CLIENT_ID / SECRET)
 python app.py --ingest-reddit-live
 
-# Ingest live YouTube videos via Data API v3
+# Ingest live YouTube videos via Data API v3 (requires YOUTUBE_API_KEY)
 python app.py --ingest-youtube
 
 # Preprocess ingested Reddit posts
@@ -218,11 +237,8 @@ python app.py --preprocess-reddit
 # Preprocess ingested YouTube videos
 python app.py --preprocess-youtube
 
-# Bulk index consolidated intelligence into Elasticsearch
+# Bulk index consolidated intelligence into Elasticsearch (requires active cluster)
 python app.py --index-elasticsearch
-
-# Validate Kibana dashboard export bundle offline
-python app.py --validate-kibana
 ```
 
 ### 6.3 Argument Parser Rules & Mutual Exclusion
@@ -270,13 +286,23 @@ Upon successful pipeline completion (or graceful single-platform partial complet
 
 The platform includes an export bundle containing 41 Kibana saved objects:
 * **Bundle Location**: `config/kibana/social_intelligence_dashboards.ndjson`
-* **Object Inventory**: 1 Dashboard, 12 Visualizations (Lens & TSVB), 1 Search view, 2 Index Patterns, and 25 Tag/Formatting objects.
+* **Object Inventory**: Exactly 41 total saved objects with 100% self-contained referential integrity:
+  * **5 Dashboards**:
+    * Executive Social Intelligence Overview (`dashboard-executive-overview`, 8 panels)
+    * Sentiment Intelligence (`dashboard-sentiment-intelligence`, 7 panels)
+    * Topic and Trend Intelligence (`dashboard-topic-intelligence`, 6 panels)
+    * Misinformation Intelligence (`dashboard-misinformation-intelligence`, 8 panels: 7 Lens + 1 Markdown Methodology Disclosure)
+    * Network and Influencer Intelligence (`dashboard-network-intelligence`, 6 panels)
+  * **34 Lens Visualizations**: Time series, bar charts, metric aggregations, and pie distributions.
+  * **1 Markdown Methodology Visualization**: In-dashboard disclosure panel detailing heuristic misinformation risk assessment boundaries.
+  * **1 Data View (Index Pattern)**: `view-consolidated-intelligence` (Title: `consolidated_intelligence`), matching Schema-v2.
 
 ### 8.1 Offline Validation (Stage 12)
-Validates bundle schema, NDJSON structure, index-pattern references, and Elasticsearch field type conformance without contacting a live Kibana server:
+Validates bundle schema, NDJSON structure, index-pattern references, and Elasticsearch field type conformance offline without requiring a live Kibana service:
 ```bash
 python app.py --validate-kibana
 ```
+*(Executes offline within the Python project environment without requiring a running Kibana instance)*
 
 ### 8.2 Live Dashboard Import Tool
 An optional HTTP utility (`src/search/kibana_dashboard_importer.py`) deploys the bundle directly into Kibana 8.x via the Saved Objects Import API:
@@ -302,7 +328,7 @@ The platform's analytical modules implement specific methodological boundaries t
 * **Non-Causal Representation**: Graph metrics reflect network centrality within collected sample posts and comments; they do not establish proven real-world persuasion, authority, or causal influence.
 
 ### 9.3 Multilingual Sentiment Polarity (Stage 5)
-* **Model**: CardiffNLP RoBERTa (`twitter-roberta-base-sentiment-latest`).
+* **Model**: CardiffNLP XLM-RoBERTa (`cardiffnlp/twitter-xlm-roberta-base-sentiment-multilingual`).
 * **Non-Destructive Retention**: Posts containing empty text, emoji-only strings, or unsupported languages are classified as `label: "UNDETERMINED"`, `score: 0.0`, `status: "empty_text"`. The pipeline preserves records in output datasets rather than silently deleting non-English or unparseable data.
 
 ### 9.4 Topic Modeling (Stage 6)
