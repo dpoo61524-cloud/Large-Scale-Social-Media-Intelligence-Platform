@@ -9,8 +9,15 @@ Persists structured results non-destructively to data/processed/topic_modeling_r
 from datetime import datetime, timezone
 import json
 import logging
+import numbers
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    import numpy as _np
+    _NUMPY_BOOL_TYPES: tuple[type, ...] = (_np.bool_,)
+except ImportError:
+    _NUMPY_BOOL_TYPES = ()
 
 from src.topics.topic_modeler import (
     DEFAULT_EMBEDDING_MODEL,
@@ -24,6 +31,77 @@ logger = logging.getLogger(__name__)
 DEFAULT_REDDIT_INPUT = Path("data/processed/reddit_posts_processed.json")
 DEFAULT_YOUTUBE_INPUT = Path("data/processed/youtube_videos_processed.json")
 DEFAULT_OUTPUT_PATH = Path("data/processed/topic_modeling_results.json")
+
+TOPIC_STATUS_ASSIGNED = "assigned"
+TOPIC_STATUS_OUTLIER = "outlier"
+TOPIC_STATUS_ERROR = "error"
+
+
+def _is_boolean(val: Any) -> bool:
+    """Explicitly checks whether val is a Python bool or NumPy bool_."""
+    if isinstance(val, bool):
+        return True
+    if _NUMPY_BOOL_TYPES and isinstance(val, _NUMPY_BOOL_TYPES):
+        return True
+    if type(val).__name__ == "bool_":
+        return True
+    return False
+
+
+def normalize_topic_id(topic_id: Any) -> Any:
+    """Normalizes valid integral topic IDs to native Python int.
+
+    Preserves invalid values as invalid without converting floats, strings, or booleans to int,
+    while ensuring non-serializable objects (like numpy.bool_) do not crash JSON persistence.
+
+    Args:
+        topic_id: Raw topic identifier from model.
+
+    Returns:
+        Native Python int for valid integral IDs, or preserved invalid value.
+    """
+    if _is_boolean(topic_id):
+        return bool(topic_id)
+    if isinstance(topic_id, (int, numbers.Integral)):
+        try:
+            return int(topic_id)
+        except (TypeError, ValueError, OverflowError):
+            return topic_id
+    return topic_id
+
+
+def derive_topic_status(topic_id: Any) -> str:
+    """Derives deterministic topic status from topic identifier.
+
+    Rules:
+    - Non-negative integer (>= 0): 'assigned'
+    - Outlier identifier (-1): 'outlier'
+    - Any other value (negative < -1, non-int, bool, float, str, None): 'error'
+
+    Supports both native Python integers and NumPy integer scalar types.
+    Explicitly rejects Python booleans and NumPy bool_ values.
+
+    Args:
+        topic_id: Topic identifier to classify.
+
+    Returns:
+        One of 'assigned', 'outlier', or 'error'.
+    """
+    if _is_boolean(topic_id):
+        return TOPIC_STATUS_ERROR
+    if not isinstance(topic_id, (int, numbers.Integral)):
+        return TOPIC_STATUS_ERROR
+
+    try:
+        val = int(topic_id)
+    except (TypeError, ValueError, OverflowError):
+        return TOPIC_STATUS_ERROR
+
+    if val >= 0:
+        return TOPIC_STATUS_ASSIGNED
+    if val == OUTLIER_TOPIC_ID:
+        return TOPIC_STATUS_OUTLIER
+    return TOPIC_STATUS_ERROR
 
 
 def extract_document_text(record: dict[str, Any], is_youtube: bool = False) -> str:
@@ -134,11 +212,13 @@ def run_topic_pipeline(
     for i, rec in enumerate(reddit_records):
         tid = topics[i]
         prob = probabilities[i]
+        norm_tid = normalize_topic_id(tid)
         enr = dict(rec)
         enr["source_platform"] = "reddit"
-        enr["topic_id"] = tid
+        enr["topic_id"] = norm_tid
         enr["topic_probability"] = prob
-        enr["topic_keywords"] = keyword_map.get(tid, modeler.get_topic_keywords(tid, top_n=5))
+        enr["topic_keywords"] = keyword_map.get(norm_tid, modeler.get_topic_keywords(norm_tid, top_n=5))
+        enr["topic_status"] = derive_topic_status(norm_tid)
         enr["topic_modeled_at"] = now_iso
         enriched_reddit.append(enr)
 
@@ -148,11 +228,13 @@ def run_topic_pipeline(
         idx = num_reddit + j
         tid = topics[idx]
         prob = probabilities[idx]
+        norm_tid = normalize_topic_id(tid)
         enr = dict(rec)
         enr["source_platform"] = "youtube"
-        enr["topic_id"] = tid
+        enr["topic_id"] = norm_tid
         enr["topic_probability"] = prob
-        enr["topic_keywords"] = keyword_map.get(tid, modeler.get_topic_keywords(tid, top_n=5))
+        enr["topic_keywords"] = keyword_map.get(norm_tid, modeler.get_topic_keywords(norm_tid, top_n=5))
+        enr["topic_status"] = derive_topic_status(norm_tid)
         enr["topic_modeled_at"] = now_iso
         enriched_youtube.append(enr)
 
