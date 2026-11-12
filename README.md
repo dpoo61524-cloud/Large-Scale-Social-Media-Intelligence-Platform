@@ -1,395 +1,354 @@
-# Large Scale Social Media Intelligence Platform
+# Large-Scale Social Media Intelligence Platform
 *(Repository: [Large-Scale-Social-Media-Intelligence-Platform](https://github.com/dpoo61524-cloud/Large-Scale-Social-Media-Intelligence-Platform))*
 
-An end-to-end data science and engineering platform designed to ingest, clean, analyze, and visualize high-volume social media data from **Reddit** and **YouTube**.
+An end-to-end data engineering and intelligence pipeline designed to ingest, clean, analyze, enrich, index, and visualize multi-source social media data from **Reddit** and **YouTube**.
 
 ---
 
-## 1. Project Introduction
+## 1. Project Overview & Objectives
 
-Social media platforms generate millions of user interactions every hour. Extracting actionable intelligence from this unstructured data requires a reliable pipeline capable of handling data ingestion, natural language processing, network analysis, and real-time visualization.
+The platform provides a modular, contract-driven architecture capable of processing unstructured social media content through natural language processing, dynamic topic modeling, interaction network analysis, heuristic misinformation risk assessment, multi-source intelligence consolidation, and search indexing.
 
-This project is built incrementally following professional software engineering and data science practices. **Block 1** establishes the project foundation: environment setup, modular directory architecture, secure configuration handling, test automation, and documentation.
-
----
-
-## 2. Project Objectives
-
-The project strictly follows the 7-step roadmap specified for the platform:
-
-1. **Data Ingestion**: Collect live posts and comments via the Reddit and YouTube APIs (respecting rate limits and terms of service) and store raw JSON data.
-2. **Text Cleaning & Preprocessing**: Clean noisy text, normalize emojis, strip URLs/unwanted characters, and detect languages.
-3. **Multilingual Sentiment Analysis**: Analyze sentiment polarity with transformer models and track how sentiment evolves over time.
-4. **Topic Modeling**: Discover hidden themes and track the rise and fall of topics using BERTopic.
-5. **Graph & Network Analysis**: Model user interactions in Neo4j, rank key influencers using PageRank, and detect user communities using NetworkX.
-6. **Misinformation Classification**: Train and evaluate a machine learning classifier on labeled fake-news datasets (e.g., LIAR).
-7. **Search & Visualization**: Index processed data in Elasticsearch and construct interactive Kibana dashboards for search, trend monitoring, and automated alerts.
+### Core Capabilities
+* **Multi-Source Ingestion**: Native OAuth2 and API v3 data collection for Reddit and YouTube with automatic fallback to offline development fixtures.
+* **Text Preprocessing**: Robust text normalization, demojization, entity unescaping, and language identification.
+* **Multilingual Sentiment Tracking**: Transformer-based sentiment polarity inference (`cardiffnlp/twitter-roberta-base-sentiment-latest`) with non-destructive preservation of unsupported records.
+* **Dynamic Topic Discovery**: BERTopic theme extraction with deterministic outlier classification (`topic_id: -1`, `topic_status: "outlier"`).
+* **Interaction Graph Modeling**: Structural network analysis (PageRank, betweenness centrality, degree metrics) and Neo4j Cypher persistence.
+* **Heuristic Misinformation Risk Assessment**: Stylometric feature extraction and LIAR benchmark machine learning classification producing heuristic risk indices.
+* **Multi-Source Intelligence Consolidation**: Strict Schema-v2 record unification merging Reddit and YouTube signals into canonical intelligence records.
+* **Search & Analytics Indexing**: Elasticsearch bulk indexing adapter with strict type mappings, field sanitization, and indexing manifest tracking.
+* **Dashboard Validation & Deployment**: Structural validation and HTTP import bundle for 41 Kibana saved objects (dashboards, visualizations, search views).
+* **Unified Pipeline Orchestration**: 12-stage linear pipeline executor (`--run-all`) with isolated run directories (`data/runs/<run_id>/`), OS-level advisory concurrency locking, single-platform graceful degradation, and exception-safe atomic canonical promotion.
 
 ---
 
-## 3. Technology Overview
+## 2. Canonical 12-Stage Pipeline Architecture
 
-The planned stack is aligned directly with the project roadmap:
-
-| Component | Technology / Library | Purpose |
-| :--- | :--- | :--- |
-| **Data Ingestion** | Reddit API, YouTube Data API v3 | Collect public posts, comments, and metadata |
-| **NLP & Preprocessing** | Python, Spark NLP | Scalable text cleaning, tokenization, language detection |
-| **Topic Modeling** | BERTopic | Dynamic topic extraction and temporal trend analysis |
-| **Graph Analytics** | Neo4j, NetworkX | Interaction graph modeling, PageRank, community detection |
-| **Misinformation ML** | Scikit-learn / Transformers, LIAR Dataset | Fake news and claim verification classification |
-| **Search & Dashboards**| Elasticsearch, Kibana | Full-text indexing, aggregation, and visual monitoring |
-| **Foundation (Block 1)**| `python-dotenv`, `pytest` | Environment management, secure config, and testing |
-
----
-
-## 4. Project Structure
+The platform executes processing in a strict, linear dependency order across 12 canonical stages:
 
 ```text
-Large-Scale Social Media Intelligence Platform/
-│
-├── app.py                  # Main entry point and status inspection
-├── requirements.txt        # Python dependency manifest
-├── .env.example            # Template for environment variables and API credentials
-├── .gitignore              # Excludes virtual environments, datasets, and secrets
-├── README.md               # Beginner-friendly project documentation
-│
-├── config/                 # Configuration management
-│   ├── __init__.py
-│   └── settings.py         # Secure environment variable reader with secret masking
-│
-├── src/                    # Source code package
-│   ├── __init__.py
-│   └── ingestion/          # Data ingestion pipelines (Step 1)
-│       ├── __init__.py
-│       ├── reddit_ingestion.py  # Reddit mock & OAuth2 live ingestion
-│       └── youtube_ingestion.py # YouTube Data API v3 live ingestion
-│
-├── data/                   # Data storage
-│   ├── sample_reddit_posts.json # Synthetic Reddit posts fixture
-│   ├── raw/                # Unprocessed JSON payloads (git-ignored)
-│   └── processed/          # Cleaned, tokenized, and enriched datasets (git-ignored)
-│
-├── models/                 # Model weights and pipeline binaries (git-ignored)
-│
-├── tests/                  # Unit and validation tests
-│   ├── __init__.py
-│   ├── test_app.py         # Application entry point tests
-│   ├── test_reddit_ingestion.py  # Reddit schema & API tests
-│   ├── test_youtube_ingestion.py # YouTube API & quota tests
-│   └── test_settings.py    # Configuration and security masking tests
-│
-└── docs/                   # Architecture and technical documentation
-    └── architecture.md     # System architecture and component roadmap
+[Raw Ingestion]
+  ├── 1. reddit_ingestion   ──────> data/raw/reddit_raw_posts.json
+  └── 2. youtube_ingestion  ──────> data/raw/youtube_videos_raw.json
+          │
+[Text Preprocessing]
+  ├── 3. reddit_preprocessing   ──> data/processed/reddit_posts_processed.json
+  └── 4. youtube_preprocessing  ──> data/processed/youtube_videos_processed.json
+          │
+[Analytical Enrichment]
+  ├── 5. sentiment          ──────> data/processed/sentiment_analysis_results.json
+  ├── 6. topics             ──────> data/processed/topic_modeling_results.json
+  ├── 7. graph              ──────> data/processed/graph_analysis_results.json
+  │       │
+  │       └── 8. neo4j_persistence ──> Graph Database (Neo4j Cypher Ingestion)
+  │
+  └── 9. misinformation     ──────> data/processed/misinformation_analysis_results.json
+          │
+[Consolidation & Search Integration]
+  ├── 10. consolidation     ──────> data/processed/consolidated_intelligence.json
+  ├── 11. elasticsearch_indexing ─> Search Engine (Elasticsearch Bulk Indexing)
+  └── 12. kibana_validation ──────> Offline Bundle Validation (41 Saved Objects)
 ```
+
+### Stage Summary & Data Contracts
+
+| Stage # | Stage Identifier | Functional Scope | Primary Output Artifact | Prerequisite Inputs |
+|:---:|---|---|---|---|
+| **1** | `reddit_ingestion` | Fetch Reddit posts (live API or mock fixture) | `reddit_raw_posts.json` | Network API or sample fixture |
+| **2** | `youtube_ingestion` | Fetch YouTube metadata (live API or mock fixture) | `youtube_videos_raw.json` | Network API or sample fixture |
+| **3** | `reddit_preprocessing` | Clean text, demojize, detect language | `reddit_posts_processed.json` | `reddit_raw_posts.json` |
+| **4** | `youtube_preprocessing` | Clean text, demojize, detect language | `youtube_videos_processed.json` | `youtube_videos_raw.json` |
+| **5** | `sentiment` | RoBERTa sentiment polarity scoring | `sentiment_analysis_results.json` | Preprocessed Reddit and/or YouTube |
+| **6** | `topics` | BERTopic thematic cluster extraction | `topic_modeling_results.json` | Preprocessed Reddit and/or YouTube |
+| **7** | `graph` | Entity interaction graph & PageRank | `graph_analysis_results.json` | Preprocessed Reddit and/or YouTube |
+| **8** | `neo4j_persistence` | Cypher transactional graph insertion | Neo4j Graph Database | `graph_analysis_results.json` |
+| **9** | `misinformation` | Stylometric & ML risk assessment | `misinformation_analysis_results.json` | Preprocessed Reddit and/or YouTube |
+| **10** | `consolidation` | Schema-v2 multi-source record join | `consolidated_intelligence.json` | Preprocessed data + Stages 5, 6, 7, 9 |
+| **11** | `elasticsearch_indexing` | Bulk document transformation & indexing | Elasticsearch Cluster | `consolidated_intelligence.json` |
+| **12** | `kibana_validation` | Offline schema & reference bundle validation | 41 Saved Objects Verified | `social_intelligence_dashboards.ndjson` |
 
 ---
 
-## 5. Installation Instructions
+## 3. Installation & Runtime Prerequisites
 
-Follow these step-by-step instructions to set up the project on your local machine:
+### 3.1 Python Runtime Requirements
 
-### Step 1: Clone or Navigate to the Project
-Open your terminal (PowerShell on Windows, or bash on macOS/Linux):
-```bash
-cd "Large-Scale Social Media Intelligence Platform"
-```
+To ensure clear operational expectations, the repository distinguishes the environments actually tested from broader compatibility claims:
 
-### Step 2: Create a Python Virtual Environment
-Creating a virtual environment ensures dependencies remain isolated:
-```bash
-# Windows
-python -m venv venv
+* **Core Execution & Test Environment (Actually Tested)**:
+  * **Python 3.14.7** (Windows 10 x64) is the active project environment where all non-JVM core pipeline modules (Stages 1, 2, 5–13) and CLI orchestration run. The Stage 13 focused regression suites passed 904 tests on Python 3.14.7. This result does not establish that the entire repository test suite has been executed.
+* **Spark NLP Preprocessing Environment (Actually Tested)**:
+  * **Python 3.12.10** (in an isolated virtual environment, e.g., `venv-spark`) is used exclusively for PySpark and Spark NLP preprocessing (Stages 3 & 4). Spark preprocessing is run in this separate Python 3.12.10 environment.
+* **Declared Dependency Compatibility Range**:
+  * The packages in `requirements.txt` declare standard Python package compatibility (e.g., Python >= 3.10), but **only Python 3.14.7 (core) and Python 3.12.10 (Spark) have been physically tested and validated** in this workspace. Broader version matrix compatibility has not been verified via CI.
 
-# macOS / Linux
-python3 -m venv venv
-```
+### 3.2 Java Runtime Requirements (For Spark NLP Preprocessing)
+* Required exclusively when executing PySpark NLP preprocessing: **Microsoft OpenJDK 17** configured on `JAVA_HOME` and `PATH`.
+* On Windows, Hadoop native binaries (`winutils.exe` and `hadoop.dll`) under `%HADOOP_HOME%\bin` are required for POSIX permission simulation.
+* Core non-JVM stages (Stages 1, 2, 5–13) do not require Java or Spark.
 
-### Step 3: Activate the Virtual Environment
-```bash
-# Windows (PowerShell)
-.\venv\Scripts\Activate.ps1
+### 3.3 Dependency Installation
 
-# Windows (Command Prompt)
-.\venv\Scripts\activate.bat
-
-# macOS / Linux
-source venv/bin/activate
-```
-
-### Step 4: Install Dependencies
-Install the required foundational packages:
+#### Base Installation (Core NLP, Analytics, and Offline Testing)
+Installs all dependencies required for core pipeline execution, machine learning inference, graph modeling, and complete offline test suites:
 ```bash
 pip install -r requirements.txt
 ```
+*(Includes `torch`, `transformers`, `bertopic`, `networkx`, `neo4j`, `scikit-learn`, `joblib`, `python-dotenv`, `emoji`, `pytest`)*
 
-### Step 5: Configure Environment Variables
-Copy `.env.example` to create your local `.env` file:
+#### Optional Live Cluster Integration (Elasticsearch Only)
+If connecting to an active, running Elasticsearch cluster for live bulk indexing (`--index-elasticsearch`), install the extended dependency manifest:
 ```bash
-# Windows (PowerShell)
-Copy-Item .env.example .env
+pip install -r requirements-live.txt
+```
+*(Extends base requirements with `elasticsearch>=8.0.0,<9.0.0`. Note: This optional file covers Elasticsearch only. Neo4j is already covered in base requirements, and Kibana utilizes standard library HTTP transport with zero additional packages).*
 
-# Windows (CMD)
+---
+
+## 4. Environment Configuration & Security
+
+The platform utilizes a secure, zero-hardcoded-credentials configuration pattern via `config/settings.py` and `.env`.
+
+### 4.1 Setup `.env`
+Copy the provided template and supply real credentials as needed:
+```bash
+# Linux/macOS
+cp .env.example .env
+
+# Windows (Command Prompt)
 copy .env.example .env
 
-# macOS / Linux
-cp .env.example .env
-```
-> **Security Reminder**: Never put real credentials inside `.env.example`, and never commit `.env` to Git.
-
----
-
-## 6. How to Run the Application
-
-Execute the application entry point using Python:
-
-```bash
-python app.py
+# Windows (PowerShell)
+Copy-Item .env.example .env
 ```
 
-### Running Validation Tests
-Run the automated test suite with pytest:
+### 4.2 Configuration Parameters
 
+| Environment Variable | Default Value | Purpose |
+|---|---|---|
+| `APP_ENV` | `development` | Environment mode (`development`, `testing`, `production`) |
+| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `REDDIT_CLIENT_ID` | Empty | Reddit OAuth2 script app client ID |
+| `REDDIT_CLIENT_SECRET` | Empty | Reddit OAuth2 client secret |
+| `REDDIT_USER_AGENT` | `social-media-intelligence:v1.0` | Reddit compliance user agent string |
+| `YOUTUBE_API_KEY` | Empty | Google Cloud YouTube Data API v3 key |
+| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt connection URI |
+| `NEO4J_USERNAME` | `neo4j` | Neo4j authentication user |
+| `NEO4J_PASSWORD` | Empty | Neo4j authentication password |
+| `ELASTICSEARCH_HOST` | `http://localhost:9200` | Elasticsearch REST endpoint |
+| `ELASTICSEARCH_USERNAME` | `elastic` | Elasticsearch basic authentication user |
+| `ELASTICSEARCH_PASSWORD` | Empty | Elasticsearch basic authentication password |
+| `KIBANA_HOST` | `http://localhost:5601` | Kibana endpoint for saved objects import |
+
+### 4.3 Security & Secret Masking Guarantee
+* **No Plaintext Logging**: Credentials (`reddit_client_secret`, `youtube_api_key`, `neo4j_password`, `elasticsearch_password`) are declared with `field(repr=False)` in `AppConfig`. String representations and application logs never output plaintext secrets.
+* **Safe Summary Helper**: `AppConfig.get_safe_summary()` returns boolean readiness flags (`reddit_configured`, `elasticsearch_configured`) rather than raw tokens.
+* **Git Protection**: `.gitignore` strictly blocks `.env`, `.env.*`, `*.lock`, `data/runs/`, and local dataset files from version control.
+
+---
+
+## 5. Mock vs. Live Ingestion Behavior
+
+The ingestion modules automatically distinguish between mock development environments and authenticated live API calls:
+
+1. **Reddit Ingestion (`src/ingestion/reddit_ingestion.py`)**:
+   * If `REDDIT_CLIENT_ID` or `REDDIT_CLIENT_SECRET` is unset or contains `your_...` placeholders, the pipeline falls back to loading synthetic mock data from `data/sample_reddit_posts.json`.
+   * When valid credentials are supplied, it requests OAuth2 bearer tokens via standard library HTTPS calls (`https://www.reddit.com/api/v1/access_token`), fetching live posts from configured subreddits.
+
+2. **YouTube Ingestion (`src/ingestion/youtube_ingestion.py`)**:
+   * If `YOUTUBE_API_KEY` is missing or placeholder, mock video records are generated for local offline testing.
+   * When a key is supplied, it issues `search.list` and `videos.list` requests against `https://www.googleapis.com/youtube/v3/`, tracking daily quotas and rate limits defensibly.
+
+---
+
+## 6. Command-Line Interface (CLI) Usage
+
+The application entry point is `app.py`. All operations are invoked via command-line arguments.
+
+### 6.1 Unified 12-Stage Pipeline Execution (`--run-all`)
+
+To execute the complete 12-stage intelligence pipeline:
 ```bash
-pytest
+python app.py --run-all
 ```
 
----
-
-## 7. Data Ingestion (Company Step 1: Reddit & YouTube APIs)
-
-The data ingestion package (`src/ingestion/`) implements raw data collection for public Reddit discussions and YouTube video metadata without applying text cleaning, emoji modification, or language detection (those operations belong to Step 2).
-
-### 7.1 Data Sources & Storage
-
-| Source | Collection Mechanism | Output File | Git Status |
-| :--- | :--- | :--- | :--- |
-| **Reddit (Mock)** | Synthetic JSON fixture (`data/sample_reddit_posts.json`) | `data/raw/reddit_posts_raw.json` | Excluded by `.gitignore` |
-| **Reddit (Live API)** | OAuth2 Client-Credentials grant via `oauth.reddit.com` | `data/raw/reddit_posts_raw.json` | Excluded by `.gitignore` |
-| **YouTube (Live API)** | YouTube Data API v3 (`search` and `videos` endpoints) | `data/raw/youtube_videos_raw.json` | Excluded by `.gitignore` |
-
-> **Non-destructive Storage**: Both raw storage functions (`save_raw_posts` and `save_raw_youtube_videos`) merge new records by their primary identifiers (`post_id` and `video_id`) to prevent accidental data loss across multiple ingestion sessions.
-
----
-
-### 7.2 API Credentials & Approval Requirements
-
-#### A. Reddit API Access & Approval
-* **Important Developer Policy Notice**: Navigating to `reddit.com/prefs/apps` is a legacy interface and is **not** a guaranteed self-serve method for new automated API access. Under Reddit's updated Data API Developer Terms, external API access requires developer registration and formal use-case approval through the **Reddit Developer Platform** ([https://support.reddithelp.com/](https://support.reddithelp.com/) / [https://www.reddit.com/dev/api](https://www.reddit.com/dev/api)).
-* **Mock Testing vs. Live API Verification**:
-  * **Mock Mode (Recommended for Learning & Development)**: `python app.py --ingest-reddit` requires **no API keys, no approvals, and no network requests**. It runs 100% offline using `data/sample_reddit_posts.json` to allow full platform development without external dependencies.
-  * **Live API Mode (Optional / Advanced)**: Requires verified OAuth credentials from an approved Reddit Developer application:
-    1. Submit and receive approval for your application under Reddit's Developer Terms.
-    2. Obtain your approved **Client ID** and **Client Secret**.
-    3. Configure a compliant User-Agent in `.env` adhering strictly to Reddit's specification:
-       `<platform>:<app_id>:<version> (by /u/<your_approved_username>)`
-    4. Set in `.env`:
-       ```env
-       REDDIT_CLIENT_ID=your_approved_client_id
-       REDDIT_CLIENT_SECRET=your_approved_client_secret
-       REDDIT_USER_AGENT=social-media-intelligence:v1.0 (by /u/your_username)
-       ```
-    5. If approval or credentials are not yet active, live collection remains safely disabled to protect against unauthorized access violations.
-
-#### B. YouTube Data API v3 Setup
-1. Create a project on the [Google Cloud Console](https://console.cloud.google.com/) and enable the **YouTube Data API v3**.
-2. Create an API Key in Credentials and optionally restrict it to YouTube Data API v3.
-3. Configure in `.env`:
-   ```env
-   YOUTUBE_API_KEY=your_actual_youtube_api_key
-   ```
-4. Note that search requests cost **1 quota unit** each against a separate default limit of 100 search calls per day. Video details consume **1 quota unit** each from the separate 10,000 units/day other-methods allocation. Pagination stops automatically if either limit or an API quota error is reached.
-
----
-
-### 7.3 YouTube Data API v3 Quota Accounting & Cost Model
-
-YouTube Data API v3 enforces quota usage based on **quota units** with distinct limits for search and other methods ([Google Developers Documentation](https://developers.google.com/youtube/data/determine_quota_cost)):
-
-| API Operation | Endpoint | Quota Cost | Quota Bucket / Allocation | Ingestion Usage |
-| :--- | :--- | :--- | :--- | :--- |
-| **Search List** | `/youtube/v3/search` | **1 unit** per call | **Separate limit**: 100 calls/day | Discovers video IDs matching the query (each page = 1 call) |
-| **Videos List** | `/youtube/v3/videos` | **1 unit** per call | **Other methods**: 10,000 units/day | Fetches complete snippet and statistics (batches up to 50 IDs) |
-
-#### Accurate Quota Rules & Independent Tracking
-1. **`search.list` Cost**: Costs **1 quota unit** per request.
-2. **Independent Search Limit**: `search.list` operates under a separate default allocation of **100 requests per day**.
-3. **Per-Page Consumption**: Every additional search page requested via `pageToken` consumes another search request from that separate 100-request daily limit.
-4. **`videos.list` Cost**: Costs **1 quota unit** per call from the **other daily quota allocation** (default: **10,000 units per day**).
-5. **Video Batching**: Up to 50 video IDs are batched per `videos.list` request, consuming exactly 1 unit per 50-item batch.
-6. **Compound Session Accounting**:
-   - 1 search page + 1 video batch: $1 \text{ search request (1 unit)} + 1 \text{ video batch (1 unit)} = \mathbf{2 \text{ total units}}$.
-   - 3 search pages + 3 video batches: $3 \text{ search requests} + 3 \text{ video batches} = \mathbf{6 \text{ total units}}$.
-   - 100 search pages: Hits the 100-search-request daily limit and pagination halts safely.
-7. **Local Estimation vs. Google Cloud Console**:
-   - The platform tracks estimated local usage against standard defaults (100 search requests/day, 10,000 other-methods units/day).
-   - The YouTube API does not return remaining project quota in HTTP response headers; actual project-wide quota consumption is managed externally in the Google Cloud Console. The pipeline never falsely claims to know external remaining quota.
-8. **Automated Limit Protection**: Pagination stops immediately when either the search request limit (100 calls) or other-methods quota limit (10,000 units) is reached, or when an HTTP 403 `quotaExceeded` error is returned.
-
----
-
-### 7.4 Reddit Data Retention & Deletion Compliance
-
-Under Reddit's Developer Terms and Data API policies ([https://support.reddithelp.com/hc/en-us/articles/16160319875092-Reddit-Data-API-Wiki](https://support.reddithelp.com/hc/en-us/articles/16160319875092-Reddit-Data-API-Wiki)), developers who store Reddit content must respect user privacy, retention limits, and deletion requests:
-
-1. **No Assumption of 90-Day Retention**:
-   - Developers must **not** assume a 90-day retention period is compliant.
-   - Reddit Data API terms recommend that stored data be **routinely deleted within 48 hours** unless active deletion reconciliation is performed or explicit authorized agreements exist.
-2. **48-Hour Routine Retention Policy**:
-   - `apply_reddit_retention_policy(max_age_hours=48)`: Purges records whose `collected_at` timestamp exceeds the retention window (default: 48 hours).
-   - Purged records are permanently removed from storage to ensure deleted/expired data cannot be retained or reused.
-3. **Collection Timestamp Tracking (`collected_at`)**:
-   - Every collected or saved Reddit post is stamped with an ISO 8601 UTC timestamp (`collected_at`).
-   - The original raw text, title, and metadata of the post remain completely uncleaned and unmodified during ingestion (text normalization belongs to Step 2).
-4. **Author-Identifying Information Anonymization**:
-   - `anonymize_reddit_author(author_to_anonymize)`: Replaces the `author` field with `"[deleted]"` across all stored records matching the requested user, honoring user account deletions and privacy requests while preserving text for aggregate sentiment analysis.
-5. **Targeted Post Purging**:
-   - `purge_reddit_posts(post_ids_to_purge)`: Permanently deletes specific post records from the raw JSON file when requested.
-6. **Live Deletion Reconciliation**:
-   - `reconcile_reddit_deletions(access_token, user_agent)`: Reconciles local post IDs against Reddit's live API (`/by_id/{fullnames}`). Records identified as deleted or removed are automatically purged.
-   - **Crucial Compliance Notice**: Stored Reddit records **cannot** automatically know when posts or accounts are deleted without actively querying Reddit's authorized API or receiving deletion notices.
-7. **Strict Prevention of Reuse**:
-   - Posts confirmed deleted or expired are deleted from disk storage immediately and cannot be retained, merged back, or reused.
-
----
-
-### 7.5 YouTube vs. Reddit Retention Requirements Distinction
-
-YouTube and Reddit impose fundamentally distinct legal and operational data retention rules:
-
-| Dimension | YouTube Data API v3 | Reddit Data API |
-| :--- | :--- | :--- |
-| **Governing Policy** | YouTube Developer Terms of Service (Section III.E) | Reddit Developer Terms & Data API Wiki |
-| **Core Retention Rule** | **30-Day Cache Limit**: API data must not be stored/cached for longer than 30 calendar days without refreshing from the API. | **Routine 48-Hour Deletion & User Deletion Compliance**: Routine deletion within 48 hours recommended; deleted posts must be purged. |
-| **Expired Data Reuse** | Records older than 30 days are purged during retention runs and filtered out during merges so they are never reused. | Records older than 48 hours or identified as deleted are permanently removed and cannot be reused. |
-| **Automated Detection** | Time-based expiration (`collected_at > 30 days`). | Time-based 48-hour routine deletion, plus active API checks (`/by_id/`) for user deletions. |
-| **Implementation** | `apply_youtube_retention_policy(max_cache_days=30)` | `apply_reddit_retention_policy(max_age_hours=48)`, `reconcile_reddit_deletions()`, `purge_reddit_posts()`, `anonymize_reddit_author()` |
-
----
-
-### 7.6 Rate Limits & Quota Handling Summary
-
-* **Reddit API**:
-  * Enforces rate limits per OAuth client. Live requests inspect response headers (`X-Ratelimit-Remaining`, `X-Ratelimit-Reset`, `X-Ratelimit-Used`).
-  * If a `429 Too Many Requests` error occurs or remaining quota reaches zero, ingestion halts immediately to protect developer standing.
-* **YouTube Data API v3**:
-  * Tracks 1-unit search costs against the 100 search requests/day limit.
-  * Tracks 1-unit video detail batch costs against the 10,000 units/day other-methods allocation.
-  * Stops pagination automatically when limits are reached or on HTTP `403 quotaExceeded`.
-* **Safe Fallback**: If credentials are missing or left as template placeholders (`your_*`), live ingestion remains safely disabled and reports what configuration is required.
-
----
-
-### 7.7 How to Run Ingestion
-
-Execute any ingestion pipeline through the main entry point:
-
+#### Skip Flags (Selective Platform Degradation)
+Skip flags allow skipping upstream ingestion/preprocessing or downstream external targets during a unified run:
 ```bash
-# 1. Run offline mock Reddit ingestion (10 synthetic posts)
+# Skip YouTube ingestion and preprocessing (runs in Reddit-only single-platform mode)
+python app.py --run-all --skip-youtube
+
+# Skip Reddit ingestion and preprocessing (runs in YouTube-only single-platform mode)
+python app.py --run-all --skip-reddit
+
+# Skip Neo4j database persistence
+python app.py --run-all --skip-neo4j
+
+# Skip Kibana dashboard validation
+python app.py --run-all --skip-kibana
+
+# Combine multiple skip flags
+python app.py --run-all --skip-youtube --skip-neo4j
+```
+
+#### Custom Execution Manifest Path
+By default, the manifest is saved to `data/runs/<run_id>/manifest.json` and mirrored to `data/processed/execution_manifest.json`. You can provide a custom destination:
+```bash
+python app.py --run-all --manifest-path data/runs/my_custom_manifest.json
+```
+
+### 6.2 Standalone Execution Commands (Legacy Actions)
+
+Individual components can be invoked directly for focused testing or manual batch processing:
+```bash
+# Ingest mock Reddit dataset into data/raw/
 python app.py --ingest-reddit
+python app.py --ingest                 # Alias for --ingest-reddit
 
-# 2. Run live Reddit API collection (requires credentials in .env)
+# Ingest live Reddit posts via OAuth2 API
 python app.py --ingest-reddit-live
 
-# 3. Run live YouTube video collection (requires YOUTUBE_API_KEY in .env)
+# Ingest live YouTube videos via Data API v3
 python app.py --ingest-youtube
+
+# Preprocess ingested Reddit posts
+python app.py --preprocess-reddit
+
+# Preprocess ingested YouTube videos
+python app.py --preprocess-youtube
+
+# Bulk index consolidated intelligence into Elasticsearch
+python app.py --index-elasticsearch
+
+# Validate Kibana dashboard export bundle offline
+python app.py --validate-kibana
 ```
 
-Or execute modules directly:
-```bash
-python -m src.ingestion.reddit_ingestion
-python -m src.ingestion.youtube_ingestion
-```
+### 6.3 Argument Parser Rules & Mutual Exclusion
+The CLI parser (`parse_cli_arguments`) enforces strict validation contracts:
+1. **Rule 1 (Unified vs. Legacy Exclusivity)**: `--run-all` **cannot** be combined with any legacy primary action (`--ingest-reddit`, `--preprocess-reddit`, `--index-elasticsearch`, `--validate-kibana`).
+2. **Rule 2 (Legacy Mutual Exclusivity)**: Legacy primary actions cannot be combined with each other in a single command.
+3. **Rule 3 (Scope-Restricted Flags)**: `--skip-reddit`, `--skip-youtube`, `--skip-neo4j`, `--skip-kibana`, and `--manifest-path` **require** `--run-all`. Supplying them with legacy actions or standalone results in a parser error (exit code 2).
 
 ---
 
-## 8. Text Preprocessing & Cleaning (Company Step 2: Spark NLP)
+## 7. Execution Isolation, Locking & Canonical Promotion
 
-The text preprocessing package (`src/preprocessing/`) implements scalable, modular text cleaning, emoji conversion, and Spark NLP language identification for Reddit posts and YouTube videos.
-
-### 8.1 Preprocessing Architecture & Components
-
+### 7.1 Run-Isolated Directories (`data/runs/<run_id>/`)
+Every orchestrated execution generates a cryptographically unique run identifier (`run_YYYYMMDD_HHMMSS_<8hex>`) and an isolated directory:
 ```text
-src/preprocessing/
-├── __init__.py
-├── spark_session.py         # Reusable Spark NLP session & prerequisite validator
-├── text_cleaner.py          # HTML, URL, whitespace & noise cleaner (preserves case, hashtags, numbers)
-├── emoji_handler.py         # Emoji & emoticon converter (😍🔥 -> smiling_face_with_heart_eyes fire)
-├── language_detector.py     # Spark NLP LanguageDetectorDL integration & short-text handling
-└── preprocessing_pipeline.py# Batched dataset pipeline reading data/raw/ and saving to data/processed/
+data/runs/run_20261112_143000_1a2b3c4d/
+├── manifest.json
+├── reddit_raw_posts.json
+├── youtube_videos_raw.json
+├── reddit_posts_processed.json
+├── youtube_videos_processed.json
+├── sentiment_analysis_results.json
+├── topic_modeling_results.json
+├── graph_analysis_results.json
+├── misinformation_analysis_results.json
+└── consolidated_intelligence.json
+```
+Downstream stages resolve inputs **strictly from the active run directory**. If an upstream stage fails or is skipped, downstream stages will never fall back to stale files in `data/processed/`.
+
+### 7.2 OS-Backed Advisory Concurrency Locking
+To prevent concurrent pipeline executions from corrupting shared local storage, `OrchestrationLock` acquires a kernel-level advisory lock on `data/.orchestration.lock`:
+* **Windows**: Uses `msvcrt.locking(LK_NBLCK)` at byte offset `1_000_000`.
+* **POSIX**: Uses `fcntl.flock(LOCK_EX | LOCK_NB)`.
+* **Dead-Process Recovery**: If a prior process died abruptly, the OS kernel automatically releases file locks. The lock manager safely reclaims stale locks without Time-of-Check to Time-of-Use (TOCTOU) file-unlinking races.
+
+### 7.3 Exception-Safe Canonical Promotion
+Upon successful pipeline completion (or graceful single-platform partial completion), run artifacts are promoted to canonical storage (`data/processed/`):
+* **Staging & Pre-Validation**: Files are pre-validated before promotion begins.
+* **Automated Rollback Ledger**: If an unexpected Python exception or filesystem error occurs mid-promotion, the rollback ledger restores previously existing canonical files and cleans up staging files.
+* **Crash-Safety Boundary**: The promotion replaces files sequentially on disk. While fully exception-safe within Python execution, it is not POSIX crash-safe against sudden OS power failures or `SIGKILL`.
+
+---
+
+## 8. Kibana Dashboard Import & Offline Validation
+
+The platform includes an export bundle containing 41 Kibana saved objects:
+* **Bundle Location**: `config/kibana/social_intelligence_dashboards.ndjson`
+* **Object Inventory**: 1 Dashboard, 12 Visualizations (Lens & TSVB), 1 Search view, 2 Index Patterns, and 25 Tag/Formatting objects.
+
+### 8.1 Offline Validation (Stage 12)
+Validates bundle schema, NDJSON structure, index-pattern references, and Elasticsearch field type conformance without contacting a live Kibana server:
+```bash
+python app.py --validate-kibana
 ```
 
-| Component | Module | Key Operations |
-| :--- | :--- | :--- |
-| **Spark NLP Session** | `spark_session.py` | Manages singleton local SparkSession; handles Java 17 and Python <= 3.12 compatibility validation; provides clean shutdown. |
-| **Text Cleaner** | `text_cleaner.py` | Strips HTML tags, unescapes entities, removes URLs, scrubs invisible noise/control chars, normalizes elongated character runs (`sooooo` -> `soo`). Preserves numbers, technical terms (`GPT-4`), hashtags (`#NLP`), mentions (`@dev`), and case. |
-| **Emoji Handler** | `emoji_handler.py` | Demojizes Unicode emojis and ASCII emoticons (`:)`, `<3`) into semantic tokens (`smiling_face_with_heart_eyes`, `red_heart`) with whitespace normalization. |
-| **Language Detector** | `language_detector.py` | Integrates Spark NLP `LanguageDetectorDL`; handles empty text, short-text uncertainty (<15 chars), and unsupported languages without false assumptions. |
-| **Batched Pipeline** | `preprocessing_pipeline.py` | Processes records in configurable batches (default 100); preserves raw JSON files; appends enrichment fields (`title_cleaned`, `text_cleaned`/`description_cleaned`, `detected_language`, `language_code`, `processed_at`). |
+### 8.2 Live Dashboard Import Tool
+An optional HTTP utility (`src/search/kibana_dashboard_importer.py`) deploys the bundle directly into Kibana 8.x via the Saved Objects Import API:
+```bash
+python -m src.search.kibana_dashboard_importer --host http://localhost:5601
+```
+*(Requires active Kibana service and proper network connectivity)*
 
 ---
 
-### 8.2 Environment & Runtime Prerequisites (Python & Java)
+## 9. Analytical Integrity & Responsible Disclosures
 
-Spark NLP and PySpark impose strict runtime constraints:
-* **Python Runtime**: Validated for **Python 3.8 through 3.12**. Python 3.14 does not currently have binary wheels for PySpark / Py4J / gRPC.
-* **Java Runtime**: Requires **Java 17** (or Java 8/11) on `PATH` or `JAVA_HOME` (e.g. `Microsoft OpenJDK 17`).
-* **Windows Native Binaries**: On Windows, Hadoop requires `winutils.exe` and `hadoop.dll` under `%HADOOP_HOME%\bin` to perform POSIX permissions on local temp files.
-* **Conservative Memory Tuning for Resource-Constrained Environments**:
-  On machines with <= 4 GB total RAM (~500-900 MB free), standard Spark defaults (`memory="4G"` or `16G`) cause JVM object heap reservation failures. The pipeline configures Spark defensively:
-  - Driver memory default: `1024M` (configurable via `SPARK_DRIVER_MEMORY` environment variable).
-  - Cores: `spark.driver.cores=1` (`master("local[1]")`) to avoid multi-threaded NetBIOS heartbeat contention.
-  - Driver host and bind address: `127.0.0.1` (`localhost`).
-  - Max result size: `512M`.
-* **Isolated Environment Setup**:
-  To run Spark NLP with distributed acceleration, set up an isolated Python 3.12 environment:
-  ```powershell
-  # 1. Install OpenJDK 17 & Python 3.12 (Windows)
-  winget install Microsoft.OpenJDK.17
-  winget install Python.Python.3.12
+The platform's analytical modules implement specific methodological boundaries that must be accurately understood:
 
-  # 2. Create and configure isolated Python 3.12 environment
-  py -3.12 -m venv venv-spark
+### 9.1 Misinformation Risk Assessment (Stage 9)
+* **Heuristic Risk Scoring**: The classifier combines stylometric features (punctuation density, lexical diversity, capitalization patterns) with a model trained on the LIAR benchmark.
+* **Non-Factual Verification**: The system produces **heuristic-assisted misinformation risk assessments**, NOT ground truth. It does not perform factual claim verification, web scraping for fact-checks, or real-world truth determination.
+* **Non-Calibrated Scores**: Output credibility scores are normalized indices in $[0.0, 1.0]$. They are **not calibrated probabilities**.
+* **Development Fixtures**: In the absence of an external pretrained model, an offline 24-sample fixture is used for structural verification; it is not representative of real-world production accuracy.
 
-  # 3. Install pinned Spark NLP dependencies
-  .\venv-spark\Scripts\pip install -r requirements-sparknlp.txt
-  ```
-* **Graceful Degradation**: If Java or Python <= 3.12 is missing in the primary execution environment (such as Python 3.14), the pipeline catches prerequisite failures cleanly, reports them transparently in summaries, and skips JVM startup without false claims.
+### 9.2 Interaction Graph Analytics (Stage 7 & 8)
+* **Structural Metrics**: Influence rankings (PageRank, betweenness centrality, degree centrality) measure structural graph properties within the observed interactions dataset.
+* **Non-Causal Representation**: Graph metrics reflect network centrality within collected sample posts and comments; they do not establish proven real-world persuasion, authority, or causal influence.
+
+### 9.3 Multilingual Sentiment Polarity (Stage 5)
+* **Model**: CardiffNLP RoBERTa (`twitter-roberta-base-sentiment-latest`).
+* **Non-Destructive Retention**: Posts containing empty text, emoji-only strings, or unsupported languages are classified as `label: "UNDETERMINED"`, `score: 0.0`, `status: "empty_text"`. The pipeline preserves records in output datasets rather than silently deleting non-English or unparseable data.
+
+### 9.4 Topic Modeling (Stage 6)
+* **Outlier Transparency**: BERTopic unassigned records are deterministically tagged with `topic_id: -1` and `topic_status: "outlier"`.
+* **Type Safety**: Float, boolean, or corrupted topic IDs map deterministically to `topic_status: "error"`, maintaining strict Schema-v2 record integrity without dropping rows.
 
 ---
 
-### 8.3 Processed Storage & Non-Destructive Flow
+## 10. Verification & Test Execution
 
-Raw JSON files (`data/raw/`) are treated as **read-only** and are never modified or overwritten by preprocessing. Output datasets are saved to:
-* `data/processed/reddit_posts_processed.json`
-* `data/processed/youtube_videos_processed.json`
+### 10.1 Running Focused Regression Suites
+Core pipeline contracts, manifest calculations, stage cascades, and advisory locking mechanics are verified offline via `pytest`. The Stage 13 focused regression suites passed 904 tests on Python 3.14.7 across three targeted test files (`tests/test_orchestration_runner.py`, `tests/test_app.py`, `tests/test_topic_pipeline.py`). This result does not establish that the entire repository test suite has been executed:
 
-Both files are excluded from Git via `.gitignore`.
+```bash
+# Run the three Stage 13 targeted regression test suites (904 tests)
+python -m pytest tests/test_orchestration_runner.py tests/test_app.py tests/test_topic_pipeline.py -q
 
----
+# Run consolidation and search pipeline integration tests
+python -m pytest tests/test_data_consolidator.py tests/test_indexing_pipeline.py -q
 
-### 8.4 How to Run Preprocessing & Integration Tests
-
-Execute preprocessing and verification in the isolated Spark environment:
-
-```powershell
-# Preprocess ingested Reddit posts using Spark NLP LanguageDetectorDL
-.\venv-spark\Scripts\python.exe app.py --preprocess-reddit
-
-# Preprocess ingested YouTube videos using Spark NLP LanguageDetectorDL
-.\venv-spark\Scripts\python.exe app.py --preprocess-youtube
-
-# Run the real Spark NLP integration test suite (executes actual pretrained LanguageDetectorDL model)
-.\venv-spark\Scripts\python.exe -m pytest tests/test_sparknlp_integration.py -v
-
-# Run the full project unit test suite (93 unit tests pass across both environments)
-.\venv\Scripts\python.exe -m pytest -v
+# Run misinformation detector and schema tests
+python -m pytest tests/test_misinformation_pipeline.py tests/test_misinformation_validator.py -q
 ```
 
+### 10.2 Test Verification Scope
+* **Offline Contract Verification**: All unit and integration test suites operate strictly offline using mock data, local temporary files, and injected client stubs.
+* **Live Service Notice**: Running the test suites validates local software contracts; it does **not** test network connectivity or authentication against live external Elasticsearch, Neo4j, or Kibana services.
+
 ---
 
-## 9. Security Best Practices Followed
+## 11. Known Operational Boundaries & Deployment Prerequisites
 
-- **Zero Hardcoded Secrets**: All future API keys, tokens, and database passwords are read from the environment.
-- **Secret Masking**: `config/settings.py` includes a safe summary utility that never exposes raw credentials in application logs or standard output.
-- **Git Protection**: `.gitignore` is pre-configured to block virtual environments, `.env` files, large dataset files (`data/raw/`, `data/processed/`), and trained model artifacts (`models/`).
+The platform is designed as an advanced data engineering reference implementation. Before considering production deployment, the following operational boundaries must be addressed:
+
+1. **Live External Services Unverified**: End-to-end integration against live, external clusters (Elasticsearch 8.x, Neo4j 5.x, Kibana 8.x) has not been validated in a live staging/production environment.
+2. **Missing Live Dependencies**: Live bulk indexing requires installing the optional `requirements-live.txt` package (`elasticsearch>=8.0.0`).
+3. **Local vs. Distributed Locking**: `OrchestrationLock` provides kernel-level advisory locking for a single operating system instance. Distributed multi-server worker deployments require a distributed lock manager (e.g., Redis, ZooKeeper, or etcd).
+4. **Shared Database State**: Isolated run directories (`data/runs/<run_id>/`) isolate filesystem artifacts, but Stage 8 and Stage 11 write to shared external database endpoints. Multi-worker deployments require database-level namespace isolation.
+5. **API Quotas & Rate Limits**: Live Reddit and YouTube ingestion are subject to third-party rate limits, developer credential approvals, daily search quota caps, and network availability.
+6. **Non-Crash-Safe Promotion**: Multi-file canonical promotion is exception-safe with an automated rollback ledger within Python execution, but cannot guarantee crash-safety against sudden OS process termination (`SIGKILL`, power failure).
+7. **Production Status**: The platform is **not production-ready** without operational infrastructure deployment, monitoring, and live integration testing.
+
+---
+
+## 12. Repository Hygiene & Licensing
+
+* **Clean Repository State**: Runtime output directories (`data/runs/`) and lock files (`*.lock`, `data/.orchestration.lock`) are excluded from version control via `.gitignore`.
+* **Zero Hardcoded Secrets**: Scanned and verified to contain no exposed credentials, API keys, or private tokens.
+* **License**: Private Development / Academic Reference.

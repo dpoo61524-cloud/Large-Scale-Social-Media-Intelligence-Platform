@@ -48,6 +48,13 @@ data/processed/*
 *.tar.gz
 
 # ==========================================
+# Runtime Orchestration Artifacts
+# ==========================================
+data/runs/
+data/.orchestration.lock
+*.lock
+
+# ==========================================
 # Model Artifacts
 # Preserve directory structure but ignore binaries
 # ==========================================
