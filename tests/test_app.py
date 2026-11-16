@@ -601,6 +601,7 @@ def test_run_all_accepted():
     assert parsed.skip_reddit is False
     assert parsed.skip_youtube is False
     assert parsed.skip_neo4j is False
+    assert parsed.skip_elasticsearch is False
     assert parsed.skip_kibana is False
     assert parsed.manifest_path == DEFAULT_MANIFEST_PATH
 
@@ -611,6 +612,7 @@ def test_run_all_accepted():
         ("--skip-reddit", "skip_reddit"),
         ("--skip-youtube", "skip_youtube"),
         ("--skip-neo4j", "skip_neo4j"),
+        ("--skip-elasticsearch", "skip_elasticsearch"),
         ("--skip-kibana", "skip_kibana"),
     ],
 )
@@ -622,18 +624,20 @@ def test_each_skip_flag_accepted_with_run_all(skip_flag, expected_attr):
 
 
 def test_all_skip_flags_together_with_run_all():
-    """Verify all four skip flags can be provided simultaneously with --run-all."""
+    """Verify all five skip flags can be provided simultaneously with --run-all."""
     parsed = parse_cli_arguments([
         "--run-all",
         "--skip-reddit",
         "--skip-youtube",
         "--skip-neo4j",
+        "--skip-elasticsearch",
         "--skip-kibana",
     ])
     assert parsed.run_all is True
     assert parsed.skip_reddit is True
     assert parsed.skip_youtube is True
     assert parsed.skip_neo4j is True
+    assert parsed.skip_elasticsearch is True
     assert parsed.skip_kibana is True
 
 
@@ -643,6 +647,7 @@ def test_all_skip_flags_together_with_run_all():
         "--skip-reddit",
         "--skip-youtube",
         "--skip-neo4j",
+        "--skip-elasticsearch",
         "--skip-kibana",
     ],
 )
@@ -9076,6 +9081,154 @@ def test_consolidation_stage_successful_promotion(tmp_path, monkeypatch):
     assert canonical.exists()
 
 
+def test_consolidation_stage_schema_v2_10_records_reported_correctly(tmp_path, monkeypatch):
+    """Verify execute_consolidation_stage correctly extracts record count (10) from Schema-v2 metrics."""
+    import copy
+    from tests.test_data_consolidator import _make_valid_artifact_payload
+
+    p = _make_valid_artifact_payload()
+    rec_reddit = p["records"][0]
+    rec_youtube = p["records"][1]
+
+    records = []
+    for i in range(5):
+        r = copy.deepcopy(rec_reddit)
+        r["document_id"] = f"reddit_r_{1000 + i}"
+        r["native_id"] = f"r_{1000 + i}"
+        records.append(r)
+        y = copy.deepcopy(rec_youtube)
+        y["document_id"] = f"youtube_y_{2000 + i}"
+        y["native_id"] = f"y_{2000 + i}"
+        records.append(y)
+
+    p["records"] = records
+    p["metrics"]["total_records_consolidated"] = 10
+    p["metrics"]["complete_records"] = 10
+    p["metrics"]["platform_counts"] = {"reddit": 5, "youtube": 5}
+    p["provenance"]["reddit_records_count"] = 5
+    p["provenance"]["youtube_records_count"] = 5
+    # Explicitly ensure NO root-level total_records exists in payload
+    p.pop("total_records", None)
+
+    r_file = tmp_path / "reddit_proc.json"
+    r_file.write_text("[]", encoding="utf-8")
+    canonical = tmp_path / "consolidated.json"
+
+    def mock_consolidate(**kwargs):
+        out_path = Path(kwargs["output_path"])
+        out_path.write_text(json.dumps(p), encoding="utf-8")
+        return p
+
+    monkeypatch.setattr("app.consolidate_social_intelligence", mock_consolidate)
+
+    entry, path = execute_consolidation_stage(
+        reddit_processed_path=r_file,
+        canonical_output_path=canonical,
+        reddit_stage_entry={"status": "success", "record_count": 5},
+        youtube_stage_entry={"status": "success", "record_count": 5},
+    )
+    assert entry["status"] == "success"
+    assert entry["record_count"] == 10
+    assert path == canonical
+    assert canonical.exists()
+
+
+def test_consolidation_stage_schema_v2_zero_records_distinguishable_from_failure(tmp_path, monkeypatch):
+    """Verify execute_consolidation_stage with 0 valid records reports empty status, not failed."""
+    from tests.test_data_consolidator import _make_valid_artifact_payload
+
+    p = _make_valid_artifact_payload()
+    p["records"] = []
+    p["metrics"]["total_records_consolidated"] = 0
+    p["metrics"]["complete_records"] = 0
+    p["metrics"]["platform_counts"] = {"reddit": 0, "youtube": 0}
+    p["provenance"]["reddit_records_count"] = 0
+    p["provenance"]["youtube_records_count"] = 0
+    p.pop("total_records", None)
+
+    r_file = tmp_path / "reddit_proc.json"
+    r_file.write_text("[]", encoding="utf-8")
+    canonical = tmp_path / "consolidated.json"
+
+    def mock_consolidate(**kwargs):
+        out_path = Path(kwargs["output_path"])
+        out_path.write_text(json.dumps(p), encoding="utf-8")
+        return p
+
+    monkeypatch.setattr("app.consolidate_social_intelligence", mock_consolidate)
+
+    entry, path = execute_consolidation_stage(
+        reddit_processed_path=r_file,
+        canonical_output_path=canonical,
+        reddit_stage_entry={"status": "success", "record_count": 0},
+        youtube_stage_entry={"status": "success", "record_count": 0},
+    )
+    assert entry["status"] == "empty"
+    assert entry["record_count"] == 0
+    assert entry["error_category"] is None
+    assert path == canonical
+
+
+def test_consolidation_stage_missing_metrics_fails(tmp_path, monkeypatch):
+    """Verify execute_consolidation_stage fails closed when payload metrics are absent."""
+    from tests.test_data_consolidator import _make_valid_artifact_payload
+
+    p = _make_valid_artifact_payload()
+    del p["metrics"]
+
+    r_file = tmp_path / "reddit_proc.json"
+    r_file.write_text("[]", encoding="utf-8")
+    canonical = tmp_path / "consolidated.json"
+
+    def mock_consolidate(**kwargs):
+        out_path = Path(kwargs["output_path"])
+        out_path.write_text(json.dumps(p), encoding="utf-8")
+        return p
+
+    monkeypatch.setattr("app.consolidate_social_intelligence", mock_consolidate)
+
+    entry, path = execute_consolidation_stage(
+        reddit_processed_path=r_file,
+        canonical_output_path=canonical,
+        reddit_stage_entry={"status": "success", "record_count": 2},
+        youtube_stage_entry={"status": "success", "record_count": 2},
+    )
+    assert entry["status"] == "failed"
+    assert entry["record_count"] == 0
+    assert entry["error_category"] in {"validation_failed", "invalid_metrics"}
+    assert path is None
+
+
+def test_consolidation_stage_inconsistent_metrics_count_fails(tmp_path, monkeypatch):
+    """Verify execute_consolidation_stage fails closed when metrics count does not match records length."""
+    from tests.test_data_consolidator import _make_valid_artifact_payload
+
+    p = _make_valid_artifact_payload()
+    p["metrics"]["total_records_consolidated"] = 99  # Inconsistent with len(records)==2
+
+    r_file = tmp_path / "reddit_proc.json"
+    r_file.write_text("[]", encoding="utf-8")
+    canonical = tmp_path / "consolidated.json"
+
+    def mock_consolidate(**kwargs):
+        out_path = Path(kwargs["output_path"])
+        out_path.write_text(json.dumps(p), encoding="utf-8")
+        return p
+
+    monkeypatch.setattr("app.consolidate_social_intelligence", mock_consolidate)
+
+    entry, path = execute_consolidation_stage(
+        reddit_processed_path=r_file,
+        canonical_output_path=canonical,
+        reddit_stage_entry={"status": "success", "record_count": 2},
+        youtube_stage_entry={"status": "success", "record_count": 2},
+    )
+    assert entry["status"] == "failed"
+    assert entry["record_count"] == 0
+    assert entry["error_category"] in {"validation_failed", "inconsistent_metrics"}
+    assert path is None
+
+
 # ---------------------------------------------------------------------
 # Stage 11 (Elasticsearch Indexing) Adapter Tests
 # ---------------------------------------------------------------------
@@ -9866,5 +10019,80 @@ def test_prevention_of_fallback_to_canonical_artifacts(tmp_path):
     assert e11["status"] == "failed"
     assert e11["error_category"] == "missing_artifact"
     assert p11 is None
+
+
+# ---------------------------------------------------------------------
+# Stage 5 / Stage 6 Memory Guards & Sentiment Status Validation
+# ---------------------------------------------------------------------
+
+def test_check_orchestrator_stage_memory_unit(monkeypatch):
+    """Verify check_orchestrator_stage_memory correctly evaluates safe, low, and unmeasurable memory."""
+    from app import check_orchestrator_stage_memory
+
+    # Case 1: Sufficient memory
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: 2048.0)
+    is_safe, avail, err_cat, reason = check_orchestrator_stage_memory("sentiment", min_mb=150.0)
+    assert is_safe is True
+    assert avail == 2048.0
+    assert err_cat is None
+    assert reason is None
+
+    # Case 2: Insufficient memory
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: 75.0)
+    is_safe, avail, err_cat, reason = check_orchestrator_stage_memory("topics", min_mb=150.0)
+    assert is_safe is False
+    assert avail == 75.0
+    assert err_cat == "insufficient_memory"
+    assert "below safe threshold" in reason
+
+    # Case 3: Unmeasurable memory (fail-closed)
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: -1.0)
+    is_safe, avail, err_cat, reason = check_orchestrator_stage_memory("sentiment", min_mb=150.0)
+    assert is_safe is False
+    assert avail == -1.0
+    assert err_cat == "memory_availability_unmeasurable"
+    assert "could not be measured" in reason
+
+
+def test_validate_sentiment_output_rejects_unpermitted_record_status(tmp_path):
+    """Verify validate_sentiment_output fails closed when any record contains an unpermitted sentiment_status."""
+    from app import validate_sentiment_output
+
+    payload = _sample_sentiment_payload(reddit_count=1, youtube_count=0)
+    payload["reddit_records"][0]["sentiment_status"] = "unrecognized_status"  # Malformed status!
+
+    test_file = tmp_path / "sentiment_malformed.json"
+    test_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    is_valid, count, err_cat, reason = validate_sentiment_output(
+        summary=payload,
+        temp_file_path=test_file,
+    )
+    assert is_valid is False
+    assert err_cat == "schema_violation"
+    assert "missing or invalid sentiment_status" in reason
+
+
+def test_validate_sentiment_output_accepts_all_permitted_record_statuses(tmp_path):
+    """Verify validate_sentiment_output accepts all valid statuses: success, error, fallback, empty_text."""
+    from app import validate_sentiment_output
+
+    payload = _sample_sentiment_payload(reddit_count=2, youtube_count=2)
+    payload["reddit_records"][0]["sentiment_status"] = "success"
+    payload["reddit_records"][1]["sentiment_status"] = "error"
+    payload["youtube_records"][0]["sentiment_status"] = "fallback"
+    payload["youtube_records"][1]["sentiment_status"] = "empty_text"
+
+    test_file = tmp_path / "sentiment_permitted.json"
+    test_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    is_valid, count, err_cat, reason = validate_sentiment_output(
+        summary=payload,
+        temp_file_path=test_file,
+    )
+    assert is_valid is True
+    assert count == 4
+    assert err_cat is None
+    assert reason is None
 
 

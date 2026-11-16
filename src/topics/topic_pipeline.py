@@ -176,6 +176,15 @@ def run_topic_pipeline(
             "generated_at": now_iso,
             "embedding_model": getattr(modeler, "embedding_model_name", DEFAULT_EMBEDDING_MODEL),
             "total_documents_modeled": 0,
+            "execution_mode": getattr(modeler, "execution_mode", "neural_bertopic"),
+            "algorithm": getattr(modeler, "algorithm", "bertopic"),
+            "fallback_reason": getattr(modeler, "fallback_reason", None),
+            "corpus_size": 0,
+            "valid_document_count": 0,
+            "topic_count": 0,
+            "model_name": getattr(modeler, "embedding_model_name", DEFAULT_EMBEDDING_MODEL),
+            "model_version": getattr(modeler, "model_version", "0.17.4"),
+            "execution_status": "success",
             "topic_info": [],
             "similarity_matrix": {"topic_ids": [], "matrix": [], "pairwise_similarities": {}},
             "trajectories": {},
@@ -279,11 +288,22 @@ def run_topic_pipeline(
     outliers = sum(1 for t in topics if t == OUTLIER_TOPIC_ID)
     outlier_pct = round((outliers / total_records) * 100.0, 2) if total_records > 0 else 0.0
 
+    provenance = modeler.get_provenance() if hasattr(modeler, "get_provenance") else {}
+
     result_payload: dict[str, Any] = {
         "status": "success",
         "generated_at": now_iso,
         "embedding_model": getattr(modeler, "embedding_model_name", DEFAULT_EMBEDDING_MODEL),
         "total_documents_modeled": total_records,
+        "execution_mode": provenance.get("execution_mode", getattr(modeler, "execution_mode", "neural_bertopic")),
+        "algorithm": provenance.get("algorithm", getattr(modeler, "algorithm", "bertopic")),
+        "fallback_reason": provenance.get("fallback_reason", getattr(modeler, "fallback_reason", None)),
+        "corpus_size": provenance.get("corpus_size", total_records),
+        "valid_document_count": provenance.get("valid_document_count", len([c for c in corpus if isinstance(c, str) and c.strip()])),
+        "topic_count": provenance.get("topic_count", len([t for t in topic_info if t["topic_id"] != OUTLIER_TOPIC_ID])),
+        "model_name": provenance.get("model_name", getattr(modeler, "embedding_model_name", DEFAULT_EMBEDDING_MODEL)),
+        "model_version": provenance.get("model_version", getattr(modeler, "model_version", "0.17.4")),
+        "execution_status": provenance.get("execution_status", "success"),
         "outlier_count": outliers,
         "outlier_pct": outlier_pct,
         "topic_info": topic_info,

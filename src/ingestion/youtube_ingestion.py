@@ -381,6 +381,7 @@ def ingest_youtube_live(
     dst = Path(output_path) if output_path else config.raw_data_path / "youtube_videos_raw.json"
 
     all_raw_videos: list[dict[str, Any]] = []
+    seen_video_ids: set[str] = set()
     errors: list[str] = []
     current_page_token: str | None = None
     pages_count = 0
@@ -417,12 +418,15 @@ def ingest_youtube_live(
             batches = (len(videos) + 49) // 50
             videos_calls += batches
             other_methods_units += batches * QUOTA_COST_VIDEOS_LIST
+            for v in videos:
+                vid = v.get("video_id")
+                if vid and vid not in seen_video_ids:
+                    seen_video_ids.add(vid)
+                    all_raw_videos.append(v)
 
         if err:
             errors.append(f"Page {page_idx + 1}: {err}")
             break
-
-        all_raw_videos.extend(videos)
         pages_count += 1
         current_page_token = next_token
 

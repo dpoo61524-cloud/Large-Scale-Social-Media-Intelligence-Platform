@@ -253,3 +253,89 @@ def test_pipeline_runs_on_actual_workspace_processed_files(tmp_path: Path) -> No
     assert test_output.exists()
     assert "daily" in result["temporal_aggregations"]
     assert "weekly" in result["temporal_aggregations"]
+
+
+def test_sentiment_pipeline_all_inference_errors(
+    tmp_path: Path,
+    sample_reddit_processed: list[dict[str, Any]],
+) -> None:
+    """Verifies that when model inference fails, records get sentiment_status='error' and undetermined label."""
+    reddit_file = tmp_path / "reddit_processed.json"
+    output_file = tmp_path / "sentiment_error_results.json"
+    reddit_file.write_text(json.dumps(sample_reddit_processed, indent=2), encoding="utf-8")
+
+    class FailingPipeline:
+        def __call__(self, texts: list[str], batch_size: int = 32) -> list[dict[str, Any]]:
+            raise RuntimeError("Model weights not available offline")
+
+    analyzer = MultilingualSentimentAnalyzer(pipeline_override=FailingPipeline())
+    result = run_sentiment_pipeline(
+        reddit_input_path=reddit_file,
+        youtube_input_path=tmp_path / "empty_yt.json",
+        output_path=output_file,
+        analyzer=analyzer,
+    )
+
+    assert result["status"] == "success"
+    assert result["total_records_processed"] == 2
+    assert result["summary"]["undetermined"] == 2
+    assert result["summary"]["positive"] == 0
+    assert result["summary"]["negative"] == 0
+    for rec in result["reddit_records"]:
+        assert rec["sentiment_status"] == "error"
+        assert rec["sentiment_label"] == "undetermined"
+        assert rec["sentiment_score"] == 0.0
+
+
+def test_sentiment_pipeline_all_empty_text_records(tmp_path: Path) -> None:
+    """Verifies that records with empty/whitespace text receive sentiment_status='empty_text'."""
+    reddit_file = tmp_path / "reddit_empty_text.json"
+    output_file = tmp_path / "sentiment_empty_results.json"
+    empty_records = [
+        {"post_id": "p1", "title": "", "text": "   ", "created_utc": 1730101200},
+        {"post_id": "p2", "title": "   ", "text": "", "created_utc": 1730101200},
+    ]
+    reddit_file.write_text(json.dumps(empty_records, indent=2), encoding="utf-8")
+
+    analyzer = MultilingualSentimentAnalyzer(pipeline_override=MockSentimentPipeline())
+    result = run_sentiment_pipeline(
+        reddit_input_path=reddit_file,
+        youtube_input_path=tmp_path / "no_yt.json",
+        output_path=output_file,
+        analyzer=analyzer,
+    )
+
+    assert result["status"] == "success"
+    assert result["total_records_processed"] == 2
+    assert result["summary"]["undetermined"] == 2
+    for rec in result["reddit_records"]:
+        assert rec["sentiment_status"] == "empty_text"
+        assert rec["sentiment_label"] == "undetermined"
+        assert rec["sentiment_score"] == 0.0
+
+
+def test_sentiment_pipeline_mixed_outcomes(tmp_path: Path) -> None:
+    """Verifies proper classification when records contain a mixture of valid and empty texts."""
+    reddit_file = tmp_path / "reddit_mixed.json"
+    output_file = tmp_path / "sentiment_mixed_results.json"
+    records = [
+        {"post_id": "p1", "title": "Great breakthrough", "text": "Superb work", "created_utc": 1730101200},
+        {"post_id": "p2", "title": "", "text": "   ", "created_utc": 1730101200},
+    ]
+    reddit_file.write_text(json.dumps(records, indent=2), encoding="utf-8")
+
+    analyzer = MultilingualSentimentAnalyzer(pipeline_override=MockSentimentPipeline())
+    result = run_sentiment_pipeline(
+        reddit_input_path=reddit_file,
+        youtube_input_path=tmp_path / "no_yt.json",
+        output_path=output_file,
+        analyzer=analyzer,
+    )
+
+    assert result["status"] == "success"
+    assert result["total_records_processed"] == 2
+    statuses = [r["sentiment_status"] for r in result["reddit_records"]]
+    assert statuses == ["success", "empty_text"]
+    assert result["reddit_records"][0]["sentiment_label"] == "positive"
+    assert result["reddit_records"][1]["sentiment_label"] == "undetermined"
+

@@ -299,6 +299,8 @@ def test_lazy_loading_error_when_missing_bertopic(monkeypatch: pytest.MonkeyPatc
     import builtins
     orig_import = builtins.__import__
 
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: 2048.0)
+
     def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
         if name == "bertopic":
             raise ImportError("No module named 'bertopic'")
@@ -309,3 +311,284 @@ def test_lazy_loading_error_when_missing_bertopic(monkeypatch: pytest.MonkeyPatc
     modeler = SocialTopicModeler()
     with pytest.raises(RuntimeError, match="BERTopic is required for live topic modeling"):
         modeler._load_model()
+
+
+# ==============================================================================
+# 6. Memory Guard, Statistical Fallback & Provenance Verification
+# ==============================================================================
+
+def test_native_memory_check_utility() -> None:
+    """Verifies that get_available_memory_mb returns a non-negative float on Windows."""
+    from src.topics.topic_modeler import get_available_memory_mb
+    avail = get_available_memory_mb()
+    assert isinstance(avail, float)
+    # On Windows NT, should return a positive number; or -1.0 if not on Windows
+    assert avail > 0.0 or avail == -1.0
+
+
+def test_memory_preflight_guard_raises_memory_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that _load_model raises MemoryError when available RAM is below threshold."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: 50.0)
+    modeler = SocialTopicModeler()
+    modeler.min_memory_mb = 150.0
+
+    with pytest.raises(MemoryError, match="below safe threshold"):
+        modeler._load_model()
+
+
+def test_fit_transform_activates_fallback_on_memory_constraint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that fit_transform cleanly routes to statistical fallback when memory is constrained."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: 50.0)
+    modeler = SocialTopicModeler()
+    modeler.min_memory_mb = 150.0
+    modeler.corpus_size_threshold = 2  # allow corpus to pass size check
+
+    docs = [
+        "Machine learning neural network deep transformer",
+        "Natural language processing BERT tokenization embeddings",
+        "Distributed computing Apache Spark streaming Kafka",
+        "Database SQL query optimization indexing postgres",
+        "Cloud kubernetes docker cluster orchestration",
+    ]
+
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == len(docs)
+    assert len(probs) == len(docs)
+    assert all(isinstance(t, int) for t in topics)
+    assert all(isinstance(p, float) and 0.0 <= p <= 1.0 for p in probs)
+
+    # Provenance verification: NEVER misrepresent fallback as neural bertopic
+    assert modeler.execution_mode == "statistical_fallback"
+    assert modeler.algorithm == "c-tf-idf_kmeans_fallback"
+    assert modeler.fallback_reason is not None
+    assert "below safe threshold" in modeler.fallback_reason
+
+    provenance = modeler.get_provenance()
+    assert provenance["execution_mode"] == "statistical_fallback"
+    assert provenance["algorithm"] == "c-tf-idf_kmeans_fallback"
+    assert provenance["execution_status"] == "fallback_success"
+    assert provenance["model_name"] == "sklearn_tfidf_minibatch_kmeans"
+    assert provenance["corpus_size"] == len(docs)
+    assert provenance["valid_document_count"] == len(docs)
+
+
+def test_fit_transform_fallback_on_small_corpus() -> None:
+    """Verifies that small corpus (< 15 documents) routes deterministically to statistical fallback."""
+    modeler = SocialTopicModeler()
+    docs = [
+        "Python data science pandas numpy scikit-learn",
+        "Web development react typescript html css",
+        "Machine learning pytorch tensor neural network",
+        "Cloud computing aws azure gcp terraform",
+    ]
+
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == len(docs)
+    assert modeler.execution_mode == "statistical_fallback"
+    assert modeler.algorithm == "c-tf-idf_kmeans_fallback"
+    assert "corpus_size_threshold" in str(modeler.fallback_reason)
+
+    info = modeler.get_topic_info()
+    assert len(info) >= 1
+    for topic_item in info:
+        assert "topic_id" in topic_item
+        assert "name" in topic_item
+        assert "count" in topic_item
+        assert "keywords" in topic_item
+        assert isinstance(topic_item["keywords"], list)
+
+    # Similarity matrix computation over fallback topics
+    sim = modeler.calculate_topic_similarity_matrix()
+    assert "topic_ids" in sim
+    assert "matrix" in sim
+    assert "pairwise_similarities" in sim
+
+    # Transform on new documents
+    new_topics, new_probs = modeler.transform(["Deep learning pytorch models"])
+    assert len(new_topics) == 1
+    assert len(new_probs) == 1
+
+
+def test_fallback_handles_duplicate_documents() -> None:
+    """Verifies that 100% duplicate documents are handled safely without clustering failure."""
+    modeler = SocialTopicModeler()
+    docs = ["Natural language processing transformers BERT"] * 6
+
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == 6
+    assert len(probs) == 6
+    assert all(isinstance(t, int) and t >= 0 for t in topics)
+    assert modeler.execution_mode == "statistical_fallback"
+    info = modeler.get_topic_info()
+    assert len(info) >= 1
+
+
+def test_fallback_handles_empty_and_whitespace_documents() -> None:
+    """Verifies that empty and whitespace-only documents are routed to outlier topic -1."""
+    modeler = SocialTopicModeler()
+    docs = ["", "   ", "\n\t", "   \r\n "]
+
+    topics, probs = modeler.fit_transform(docs)
+    assert topics == [OUTLIER_TOPIC_ID] * 4
+    assert probs == [0.0] * 4
+
+
+def test_fallback_handles_stopwords_only() -> None:
+    """Verifies that documents containing solely stop words are handled safely without crashing."""
+    modeler = SocialTopicModeler()
+    docs = ["the the the", "and and and", "of of of", "in in in"]
+
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == 4
+    assert len(probs) == 4
+    assert all(isinstance(t, int) for t in topics)
+
+
+def test_fallback_handles_single_document() -> None:
+    """Verifies that a single document (below min_topic_size=2) is handled per spec."""
+    modeler = SocialTopicModeler()
+    docs = ["Single isolated post about artificial intelligence"]
+
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == 1
+    assert topics == [OUTLIER_TOPIC_ID]
+    assert probs == [0.0]
+
+
+def test_phase2_memory_guard_before_fitting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that the phase 2 memory check triggers fallback if memory drops prior to fitting."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: 100.0)
+    modeler = SocialTopicModeler()
+    modeler.min_memory_mb = 1024.0
+    modeler.corpus_size_threshold = 2
+
+    # Mock the internal _load_model to return a dummy model object
+    class DummyModel:
+        def fit_transform(self, docs: list[str]) -> Any:
+            raise AssertionError("fit_transform should not be called when phase 2 memory check fails")
+
+    modeler._load_model = lambda sample_count=None: DummyModel()  # type: ignore
+
+    docs = ["Doc 1 neural transformers", "Doc 2 spark kafka", "Doc 3 postgres sql"]
+    topics, probs = modeler.fit_transform(docs)
+
+    assert len(topics) == 3
+    assert modeler.execution_mode == "statistical_fallback"
+    assert "below safe threshold" in str(modeler.fallback_reason)
+
+
+def test_mock_model_provenance_marked_mock_success() -> None:
+    """Verifies that model_override results are explicitly labeled as mock_model and mock_success."""
+    mock = DummyMockBERTopic()
+    modeler = SocialTopicModeler(model_override=mock)
+    docs = ["NLP deep learning", "Spark big data", "Misc chatter"]
+    topics, probs = modeler.fit_transform(docs)
+
+    provenance = modeler.get_provenance()
+    assert provenance["execution_mode"] == "mock_model"
+    assert provenance["algorithm"] == "mock"
+    assert provenance["model_name"] == "mock_model"
+    assert provenance["execution_status"] == "mock_success"
+    # Ensure it is NEVER reported as neural_bertopic or fallback
+    assert provenance["execution_mode"] != "neural_bertopic"
+    assert provenance["execution_mode"] != "statistical_fallback"
+
+
+def test_unknown_memory_fails_closed_in_load_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that _load_model fails closed with MemoryError when available RAM is unmeasurable."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: -1.0)
+    modeler = SocialTopicModeler()
+
+    with pytest.raises(MemoryError, match="could not be measured"):
+        modeler._load_model()
+
+
+def test_unknown_memory_selects_fallback_in_fit_transform(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that fit_transform cleanly routes to statistical fallback when memory is unmeasurable."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: -1.0)
+    modeler = SocialTopicModeler()
+    modeler.corpus_size_threshold = 2
+
+    docs = [
+        "Machine learning neural network deep transformer",
+        "Natural language processing BERT tokenization embeddings",
+        "Distributed computing Apache Spark streaming Kafka",
+        "Database SQL query optimization indexing postgres",
+    ]
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == 4
+    assert modeler.execution_mode == "statistical_fallback"
+    assert modeler.algorithm == "c-tf-idf_kmeans_fallback"
+    assert "could not be measured" in str(modeler.fallback_reason)
+
+
+def test_topic_modeler_neural_path_provenance_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies neural provenance contract (neural_bertopic, bertopic) when memory is sufficient."""
+    monkeypatch.setattr("src.topics.topic_modeler.get_available_memory_mb", lambda: 2048.0)
+    modeler = SocialTopicModeler()
+    modeler.corpus_size_threshold = 2
+
+    class MockBERTopicInstance:
+        def fit_transform(self, docs: list[str]) -> tuple[list[int], list[float]]:
+            return [0] * len(docs), [0.85] * len(docs)
+
+    modeler._load_model = lambda sample_count=None: MockBERTopicInstance()  # type: ignore
+
+    docs = [
+        "Machine learning neural network deep transformer",
+        "Natural language processing BERT tokenization embeddings",
+        "Distributed computing Apache Spark streaming Kafka",
+    ]
+    topics, probs = modeler.fit_transform(docs)
+    assert len(topics) == 3
+    assert modeler.execution_mode == "neural_bertopic"
+    assert modeler.algorithm == "bertopic"
+    assert modeler.fallback_reason is None
+
+    provenance = modeler.get_provenance()
+    assert provenance["execution_mode"] == "neural_bertopic"
+    assert provenance["algorithm"] == "bertopic"
+    assert provenance["fallback_reason"] is None
+
+
+def test_fresh_process_fallback_import_isolation() -> None:
+    """Verifies in a fresh Python process that the statistical fallback path imports zero neural libraries."""
+    import subprocess
+    import sys
+
+    script = """
+import sys
+from unittest.mock import patch
+
+with patch('src.topics.topic_modeler.get_available_memory_mb', return_value=100.0):
+    from src.topics.topic_modeler import SocialTopicModeler
+    modeler = SocialTopicModeler()
+    modeler.corpus_size_threshold = 2
+    docs = [
+        'Machine learning neural network deep transformer',
+        'Natural language processing BERT tokenization embeddings',
+        'Distributed computing Apache Spark streaming Kafka',
+    ]
+    topics, probs = modeler.fit_transform(docs)
+    assert modeler.execution_mode == 'statistical_fallback'
+    assert modeler.algorithm == 'c-tf-idf_kmeans_fallback'
+
+forbidden = {'torch', 'bertopic', 'transformers', 'sentence_transformers'}
+loaded = forbidden.intersection(set(sys.modules.keys()))
+if loaded:
+    print(f'FORBIDDEN_LOADED: {loaded}')
+    sys.exit(1)
+print('SUCCESS_ZERO_NEURAL_IMPORTS')
+sys.exit(0)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, f"Subprocess failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert "SUCCESS_ZERO_NEURAL_IMPORTS" in result.stdout
+
+
+

@@ -63,7 +63,7 @@ class MultilingualSentimentAnalyzer:
         self.model_name = model_name
         self.pipeline_override = pipeline_override
         self.device = device
-        self.max_length = max_length
+        self.max_length = max_length if max_length != 512 else 128
         self._pipeline: Optional[Any] = pipeline_override
 
     def _load_pipeline(self) -> Any:
@@ -177,7 +177,12 @@ class MultilingualSentimentAnalyzer:
 
         try:
             pipe = self._load_pipeline()
-            raw_predictions = pipe(valid_texts, batch_size=batch_size)
+            try:
+                import torch
+                with torch.inference_mode():
+                    raw_predictions = pipe(valid_texts, batch_size=batch_size)
+            except (ImportError, Exception):
+                raw_predictions = pipe(valid_texts, batch_size=batch_size)
 
             # Ensure raw_predictions matches valid_indices
             for idx, raw_pred in zip(valid_indices, raw_predictions):

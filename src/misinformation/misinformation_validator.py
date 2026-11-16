@@ -126,14 +126,12 @@ class MisinformationArtifactValidator:
                     f"and youtube records ({expected_total})"
                 )
 
-        # Invariant 4.1: Prediction count must match total_records_processed
         if isinstance(predictions, list) and _is_strict_int(total_proc):
             if len(predictions) != total_proc:
                 errors.append(
                     f"'predictions' count ({len(predictions)}) does not match 'total_records_processed' ({total_proc})"
                 )
 
-        # Invariant 4.1: Prediction identifier correspondence & uniqueness
         if isinstance(reddit_records, list) and isinstance(youtube_records, list) and isinstance(predictions, list):
             expected_keys: Set[Tuple[str, str]] = set()
             for r in reddit_records:
@@ -191,7 +189,6 @@ class MisinformationArtifactValidator:
                 if sum_tiers != total_proc:
                     errors.append(f"risk_tier_distribution sum ({sum_tiers}) does not equal total_records_processed ({total_proc})")
 
-        # Invariant 4.3: Veracity distribution validation
         ver_dist = payload.get("veracity_distribution")
         if not isinstance(ver_dist, dict):
             errors.append(f"'veracity_distribution' must be a dict, got {type(ver_dist).__name__}")
@@ -372,7 +369,6 @@ class MisinformationArtifactValidator:
         if not isinstance(tier, str) or tier not in ALLOWED_RISK_TIERS:
             errors.append(f"{prefix}: 'risk_tier' must be one of {sorted(list(ALLOWED_RISK_TIERS))}, got {tier!r}")
 
-        # Invariant 4.2: Evidence-basis validation
         eb = rec.get("evidence_basis")
         if eb is None:
             errors.append(f"{prefix}: missing required field 'evidence_basis'")

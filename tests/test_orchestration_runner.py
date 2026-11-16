@@ -559,6 +559,223 @@ def test_run_orchestrated_pipeline_intentional_skip_youtube_end_to_end(tmp_path,
     assert summary["total_stages_evaluated"] == 12
 
 
+# 15b. Intentional --skip-elasticsearch end-to-end execution scenario
+def test_run_orchestrated_pipeline_intentional_skip_elasticsearch_end_to_end(tmp_path, monkeypatch):
+    """Verify run_orchestrated_pipeline with --skip-elasticsearch correctly skips Stage 11 without skipping Stage 12."""
+    es_call_kwargs = []
+
+    def make_mock(name, status="success", record_cnt=10):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(json.dumps({"stage": name}), encoding="utf-8")
+            return {
+                "status": status,
+                "record_count": record_cnt,
+                "duration_seconds": 0.05,
+                "error_category": None,
+                "reason": None,
+            }, p
+        return _mock
+
+    def mock_es_stage(*args, **kwargs):
+        es_call_kwargs.append(kwargs)
+        if kwargs.get("skip"):
+            return {
+                "status": "skipped",
+                "record_count": 0,
+                "duration_seconds": 0.0,
+                "error_category": None,
+                "reason": "stage_skipped_by_user",
+            }, None
+        return {
+            "status": "success",
+            "record_count": 10,
+            "duration_seconds": 0.05,
+            "error_category": None,
+            "reason": None,
+        }, Path(kwargs.get("consolidated_path", "data/consolidated.json"))
+
+    kibana_calls = []
+    def mock_kibana_stage(*args, **kwargs):
+        kibana_calls.append(kwargs)
+        return {
+            "status": "success",
+            "record_count": 41,
+            "duration_seconds": 0.01,
+            "error_category": None,
+            "reason": None,
+            "mode": "offline_bundle_validation",
+            "scope": "Offline saved-object bundle schema, reference, and mapping-conformance validation (41 objects).",
+        }, None
+
+    monkeypatch.setattr("app.execute_reddit_ingestion_stage", make_mock("reddit_ingestion"))
+    monkeypatch.setattr("app.execute_youtube_ingestion_stage", make_mock("youtube_ingestion"))
+    monkeypatch.setattr("app.execute_reddit_preprocessing_stage", make_mock("reddit_preprocessing"))
+    monkeypatch.setattr("app.execute_youtube_preprocessing_stage", make_mock("youtube_preprocessing"))
+    monkeypatch.setattr("app.execute_sentiment_stage", make_mock("sentiment"))
+    monkeypatch.setattr("app.execute_topic_stage", make_mock("topics"))
+    monkeypatch.setattr("app.execute_graph_stage", make_mock("graph"))
+    monkeypatch.setattr("app.execute_neo4j_stage", make_mock("neo4j_persistence"))
+    monkeypatch.setattr("app.execute_misinformation_stage", make_mock("misinformation"))
+    monkeypatch.setattr("app.execute_consolidation_stage", make_mock("consolidation"))
+    monkeypatch.setattr("app.execute_elasticsearch_indexing_stage", mock_es_stage)
+    monkeypatch.setattr("app.execute_kibana_validation_stage", mock_kibana_stage)
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all", "--skip-elasticsearch"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_SUCCESS
+    assert manifest is not None
+    assert manifest["overall_outcome"] == "success"
+    assert manifest["exit_code"] == EXIT_SUCCESS
+
+    # Verify Stage 11 received skip=True
+    assert len(es_call_kwargs) == 1
+    assert es_call_kwargs[0]["skip"] is True
+
+    # Verify manifest entry for Stage 11
+    stage11 = manifest["stages"]["elasticsearch_indexing"]
+    assert stage11["status"] == "skipped"
+    assert stage11["reason"] == "stage_skipped_by_user"
+    assert stage11["record_count"] == 0
+
+    # Verify Stage 12 was NOT skipped and executed offline bundle validation
+    assert len(kibana_calls) == 1
+    stage12 = manifest["stages"]["kibana_validation"]
+    assert stage12["status"] == "success"
+    assert stage12["record_count"] == 41
+
+    summary = manifest["summary"]
+    assert summary["stages_succeeded"] == 11
+    assert summary["stages_skipped"] == 1
+    assert summary["stages_failed"] == 0
+    assert summary["total_stages_attempted"] == 11
+    assert summary["total_stages_evaluated"] == 12
+
+
+def test_run_orchestrated_pipeline_elasticsearch_not_skipped_by_default(tmp_path, monkeypatch):
+    """Verify run_orchestrated_pipeline passes skip=False to Stage 11 when flag is absent."""
+    es_call_kwargs = []
+
+    def make_mock(name, status="success", record_cnt=10):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(json.dumps({"stage": name}), encoding="utf-8")
+            return {
+                "status": status,
+                "record_count": record_cnt,
+                "duration_seconds": 0.05,
+                "error_category": None,
+                "reason": None,
+            }, p
+        return _mock
+
+    def mock_es_stage(*args, **kwargs):
+        es_call_kwargs.append(kwargs)
+        return {
+            "status": "success",
+            "record_count": 10,
+            "duration_seconds": 0.05,
+            "error_category": None,
+            "reason": None,
+        }, Path(kwargs.get("consolidated_path", "data/consolidated.json"))
+
+    monkeypatch.setattr("app.execute_reddit_ingestion_stage", make_mock("reddit_ingestion"))
+    monkeypatch.setattr("app.execute_youtube_ingestion_stage", make_mock("youtube_ingestion"))
+    monkeypatch.setattr("app.execute_reddit_preprocessing_stage", make_mock("reddit_preprocessing"))
+    monkeypatch.setattr("app.execute_youtube_preprocessing_stage", make_mock("youtube_preprocessing"))
+    monkeypatch.setattr("app.execute_sentiment_stage", make_mock("sentiment"))
+    monkeypatch.setattr("app.execute_topic_stage", make_mock("topics"))
+    monkeypatch.setattr("app.execute_graph_stage", make_mock("graph"))
+    monkeypatch.setattr("app.execute_neo4j_stage", make_mock("neo4j_persistence"))
+    monkeypatch.setattr("app.execute_misinformation_stage", make_mock("misinformation"))
+    monkeypatch.setattr("app.execute_consolidation_stage", make_mock("consolidation"))
+    monkeypatch.setattr("app.execute_elasticsearch_indexing_stage", mock_es_stage)
+    monkeypatch.setattr("app.execute_kibana_validation_stage", make_mock("kibana_validation", record_cnt=41))
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_SUCCESS
+    assert len(es_call_kwargs) == 1
+    assert es_call_kwargs[0]["skip"] is False
+
+
+def test_run_orchestrated_pipeline_elasticsearch_failure_fails_closed(tmp_path, monkeypatch):
+    """Verify that when Stage 11 fails (and is not skipped), overall_outcome is failed and exit code is 1."""
+    def make_mock(name, status="success", record_cnt=10):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(json.dumps({"stage": name}), encoding="utf-8")
+            return {
+                "status": status,
+                "record_count": record_cnt,
+                "duration_seconds": 0.05,
+                "error_category": None,
+                "reason": None,
+            }, p
+        return _mock
+
+    def mock_es_stage_failure(*args, **kwargs):
+        return {
+            "status": "failed",
+            "record_count": 0,
+            "duration_seconds": 0.05,
+            "error_category": "connection_error",
+            "reason": "Elasticsearch connection failed",
+        }, None
+
+    monkeypatch.setattr("app.execute_reddit_ingestion_stage", make_mock("reddit_ingestion"))
+    monkeypatch.setattr("app.execute_youtube_ingestion_stage", make_mock("youtube_ingestion"))
+    monkeypatch.setattr("app.execute_reddit_preprocessing_stage", make_mock("reddit_preprocessing"))
+    monkeypatch.setattr("app.execute_youtube_preprocessing_stage", make_mock("youtube_preprocessing"))
+    monkeypatch.setattr("app.execute_sentiment_stage", make_mock("sentiment"))
+    monkeypatch.setattr("app.execute_topic_stage", make_mock("topics"))
+    monkeypatch.setattr("app.execute_graph_stage", make_mock("graph"))
+    monkeypatch.setattr("app.execute_neo4j_stage", make_mock("neo4j_persistence"))
+    monkeypatch.setattr("app.execute_misinformation_stage", make_mock("misinformation"))
+    monkeypatch.setattr("app.execute_consolidation_stage", make_mock("consolidation"))
+    monkeypatch.setattr("app.execute_elasticsearch_indexing_stage", mock_es_stage_failure)
+    monkeypatch.setattr("app.execute_kibana_validation_stage", make_mock("kibana_validation", record_cnt=41))
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_STAGE_FAILURE
+    assert manifest["overall_outcome"] == "failed"
+    assert manifest["summary"]["stages_failed"] == 1
+
+
 # 16. Resource ownership contract
 def test_orchestration_resource_ownership_contract(tmp_path, monkeypatch):
     """Verify orchestrator allows runners to manage resources internally and passes manager=None, client=None."""
@@ -903,3 +1120,231 @@ def test_canonical_promotion_rejects_empty_source_file(tmp_path):
     with pytest.raises(CanonicalPromotionError) as exc_info:
         promote_run_to_canonical(run_dir=run_dir, processed_dir=processed_dir)
     assert "empty or not a valid regular file" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------
+# Stage 5 / 6 Fail-Closed Memory Guards & 12-Stage Manifest Accounting
+# ---------------------------------------------------------------------
+
+def test_run_orchestrated_pipeline_stage5_low_memory_halt(tmp_path, monkeypatch):
+    """Verify Stage 5 halts on insufficient physical memory, skips stages 6-12, blocks promotion, releases lock."""
+    # Force low memory (below 150 MB threshold)
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: 80.0)
+
+    def make_mock(name):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("{}", encoding="utf-8")
+            return {"status": "success", "record_count": 5, "duration_seconds": 0.01, "error_category": None, "reason": None}, p
+        return _mock
+
+    for fn in ("execute_reddit_ingestion_stage", "execute_youtube_ingestion_stage",
+               "execute_reddit_preprocessing_stage", "execute_youtube_preprocessing_stage"):
+        monkeypatch.setattr(f"app.{fn}", make_mock(fn))
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all", "--promote-canonical"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_STAGE_FAILURE
+    assert manifest is not None
+    assert manifest["overall_outcome"] == "failed"
+
+    # Stage 5 failed with insufficient_memory
+    s5 = manifest["stages"]["sentiment"]
+    assert s5["status"] == "failed"
+    assert s5["error_category"] == "insufficient_memory"
+    assert "below safe threshold" in s5["reason"]
+
+    # Stages 6 through 12 skipped with prior_stage_failure
+    for downstream in ("topics", "graph", "neo4j_persistence", "misinformation",
+                       "consolidation", "elasticsearch_indexing", "kibana_validation"):
+        entry = manifest["stages"][downstream]
+        assert entry["status"] == "skipped"
+        assert entry["reason"] == "prior_stage_failure"
+
+    # Invariant 12-stage accounting check:
+    # 4 succeeded (stages 1-4) + 1 failed (stage 5) + 7 skipped (stages 6-12) == 12
+    summary = manifest["summary"]
+    assert summary["stages_succeeded"] == 4
+    assert summary["stages_failed"] == 1
+    assert summary["stages_skipped"] == 7
+    assert summary["total_stages_attempted"] == 5
+    assert summary["total_stages_evaluated"] == 12
+
+    # Verify canonical promotion did not occur
+    canonical_proc = Path("data/processed/sentiment_analysis_results.json")
+    # Verify lock was released
+    test_lock = OrchestrationLock(lock_path=lock_file)
+    test_lock.acquire("verify_release_run")
+    assert test_lock._acquired is True
+    test_lock.release()
+
+
+def test_run_orchestrated_pipeline_stage6_low_memory_halt(tmp_path, monkeypatch):
+    """Verify Stage 6 halts on insufficient physical memory, skips stages 7-12, blocks promotion, releases lock."""
+    # Memory check: allow sentiment (stage 5) to pass, but fail topics (stage 6)
+    def mock_mem_check(stage_name, min_mb=150.0):
+        if stage_name == "sentiment":
+            return True, 2048.0, None, None
+        return False, 80.0, "insufficient_memory", f"Available physical memory (80.00 MB) is below safe threshold ({min_mb:.2f} MB) for stage '{stage_name}'."
+
+    monkeypatch.setattr("app.check_orchestrator_stage_memory", mock_mem_check)
+
+    def make_mock(name):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("{}", encoding="utf-8")
+            return {"status": "success", "record_count": 5, "duration_seconds": 0.01, "error_category": None, "reason": None}, p
+        return _mock
+
+    for fn in ("execute_reddit_ingestion_stage", "execute_youtube_ingestion_stage",
+               "execute_reddit_preprocessing_stage", "execute_youtube_preprocessing_stage",
+               "execute_sentiment_stage"):
+        monkeypatch.setattr(f"app.{fn}", make_mock(fn))
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all", "--promote-canonical"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_STAGE_FAILURE
+    assert manifest is not None
+    assert manifest["overall_outcome"] == "failed"
+
+    # Stage 5 succeeded
+    assert manifest["stages"]["sentiment"]["status"] == "success"
+
+    # Stage 6 failed with insufficient_memory
+    s6 = manifest["stages"]["topics"]
+    assert s6["status"] == "failed"
+    assert s6["error_category"] == "insufficient_memory"
+    assert "below safe threshold" in s6["reason"]
+
+    # Stages 7 through 12 skipped with prior_stage_failure
+    for downstream in ("graph", "neo4j_persistence", "misinformation",
+                       "consolidation", "elasticsearch_indexing", "kibana_validation"):
+        entry = manifest["stages"][downstream]
+        assert entry["status"] == "skipped"
+        assert entry["reason"] == "prior_stage_failure"
+
+    # Invariant 12-stage accounting check:
+    # 5 succeeded (stages 1-5) + 1 failed (stage 6) + 6 skipped (stages 7-12) == 12
+    summary = manifest["summary"]
+    assert summary["stages_succeeded"] == 5
+    assert summary["stages_failed"] == 1
+    assert summary["stages_skipped"] == 6
+    assert summary["total_stages_attempted"] == 6
+    assert summary["total_stages_evaluated"] == 12
+
+    # Verify lock was released
+    test_lock = OrchestrationLock(lock_path=lock_file)
+    test_lock.acquire("verify_release_run")
+    assert test_lock._acquired is True
+    test_lock.release()
+
+
+def test_run_orchestrated_pipeline_unknown_memory_fails_closed(tmp_path, monkeypatch):
+    """Verify unknown memory (-1.0) fails closed with memory_availability_unmeasurable."""
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: -1.0)
+
+    def make_mock(name):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("{}", encoding="utf-8")
+            return {"status": "success", "record_count": 5, "duration_seconds": 0.01, "error_category": None, "reason": None}, p
+        return _mock
+
+    for fn in ("execute_reddit_ingestion_stage", "execute_youtube_ingestion_stage",
+               "execute_reddit_preprocessing_stage", "execute_youtube_preprocessing_stage"):
+        monkeypatch.setattr(f"app.{fn}", make_mock(fn))
+
+    runs_dir = tmp_path / "runs"
+    lock_file = tmp_path / ".orch.lock"
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all"],
+        base_runs_dir=runs_dir,
+        lock_path=lock_file,
+    )
+
+    assert code == EXIT_STAGE_FAILURE
+    assert manifest is not None
+    s5 = manifest["stages"]["sentiment"]
+    assert s5["status"] == "failed"
+    assert s5["error_category"] == "memory_availability_unmeasurable"
+    assert "could not be measured" in s5["reason"]
+    assert manifest["summary"]["total_stages_evaluated"] == 12
+
+
+def test_run_orchestrated_pipeline_sentiment_and_graph_platform_classification(tmp_path, monkeypatch):
+    """Verify platform classification for sentiment and graph using actual records and platform outcomes."""
+    monkeypatch.setattr("app.get_available_memory_mb", lambda: 2048.0)
+
+    def make_mock(name, status="success", record_cnt=5):
+        def _mock(*args, **kwargs):
+            out_path = kwargs.get("canonical_output_path") or kwargs.get("manifest_path")
+            p = None
+            if out_path:
+                p = Path(out_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("{}", encoding="utf-8")
+            return {"status": status, "record_count": record_cnt, "duration_seconds": 0.01, "error_category": None, "reason": None}, p
+        return _mock
+
+    # Scenario A: Dual platform success (both Reddit and YouTube provide records)
+    for fn in ("execute_reddit_ingestion_stage", "execute_youtube_ingestion_stage",
+               "execute_reddit_preprocessing_stage", "execute_youtube_preprocessing_stage",
+               "execute_sentiment_stage", "execute_topic_stage", "execute_graph_stage",
+               "execute_neo4j_stage", "execute_misinformation_stage", "execute_consolidation_stage",
+               "execute_elasticsearch_indexing_stage", "execute_kibana_validation_stage"):
+        monkeypatch.setattr(f"app.{fn}", make_mock(fn, "success", 10))
+
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all"],
+        base_runs_dir=tmp_path / "runs_dual",
+        lock_path=tmp_path / ".lock_dual",
+    )
+    assert code == EXIT_SUCCESS
+    assert manifest["stages"]["sentiment"]["status"] == "success"
+    assert manifest["stages"]["sentiment"]["reason"] is None
+    assert manifest["stages"]["graph"]["status"] == "success"
+    assert manifest["stages"]["graph"]["reason"] is None
+
+    # Scenario B: Single platform (Reddit only, YouTube skipped)
+    def mock_yt_prep(*args, **kwargs):
+        return {"status": "skipped", "record_count": 0, "duration_seconds": 0.0, "error_category": None, "reason": "stage_skipped_by_user"}, None
+
+    monkeypatch.setattr("app.execute_youtube_preprocessing_stage", mock_yt_prep)
+    code, manifest = run_orchestrated_pipeline(
+        argv=["--run-all", "--skip-youtube"],
+        base_runs_dir=tmp_path / "runs_single",
+        lock_path=tmp_path / ".lock_single",
+    )
+    assert code == EXIT_STAGE_FAILURE
+    assert manifest["overall_outcome"] == "partial"
+    assert manifest["stages"]["sentiment"]["status"] == "partial"
+    assert manifest["stages"]["sentiment"]["reason"] == "single_platform_reddit_only"
+    assert manifest["stages"]["graph"]["status"] == "partial"
+    assert manifest["stages"]["graph"]["reason"] == "single_platform_reddit_only"

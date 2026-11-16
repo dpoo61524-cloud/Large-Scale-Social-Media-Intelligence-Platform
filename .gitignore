@@ -42,6 +42,7 @@ data/processed/*
 *.csv
 *.json
 !data/sample_reddit_posts.json
+!data/sample_reddit_interactions.json
 *.parquet
 *.tsv
 *.zip
@@ -87,3 +88,14 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+# ==========================================
+# Presentations & Documentation Binaries
+# ==========================================
+*.pptx
+*.ppt
+*.docx
+*.doc
+docs/
+scratch/
+verification_screenshots_largescale/
+

@@ -1101,3 +1101,51 @@ def test_topic_pipeline_floats_and_strings_preserved_as_invalid(
     assert r1["topic_id"] == "0"
     assert type(r1["topic_id"]) is str
     assert r1["topic_status"] == TOPIC_STATUS_ERROR
+
+
+def test_topic_pipeline_fallback_provenance_and_app_validation(
+    tmp_path: Path,
+    sample_reddit_records: list[dict[str, Any]],
+) -> None:
+    """Verifies that run_topic_pipeline with real SocialTopicModeler fallback preserves provenance and satisfies app validation."""
+    from app import validate_topic_output
+
+    reddit_path = tmp_path / "reddit_processed.json"
+    youtube_path = tmp_path / "empty_youtube.json"
+    output_path = tmp_path / "topic_results.json"
+
+    reddit_path.write_text(json.dumps(sample_reddit_records, indent=2), encoding="utf-8")
+    youtube_path.write_text("[]", encoding="utf-8")
+
+    # Use live SocialTopicModeler without mock override (triggers deterministic fallback due to small corpus)
+    modeler = SocialTopicModeler()
+    result = run_topic_pipeline(
+        reddit_input_path=reddit_path,
+        youtube_input_path=youtube_path,
+        output_path=output_path,
+        modeler=modeler,
+    )
+
+    assert output_path.exists()
+    assert result["status"] == "success"
+    assert result["execution_mode"] == "statistical_fallback"
+    assert result["algorithm"] == "c-tf-idf_kmeans_fallback"
+    assert result["fallback_reason"] is not None
+    assert result["model_name"] == "sklearn_tfidf_minibatch_kmeans"
+    assert result["execution_status"] == "fallback_success"
+    assert result["corpus_size"] == len(sample_reddit_records)
+    assert result["total_documents_modeled"] == len(sample_reddit_records)
+
+    # Validate output using backend orchestrator validation function from app.py
+    is_valid, count, error_cat, reason = validate_topic_output(
+        summary=result,
+        temp_file_path=output_path,
+        expected_reddit_count=len(sample_reddit_records),
+        expected_youtube_count=0,
+    )
+
+    assert is_valid is True, f"Validation failed: {reason} ({error_cat})"
+    assert count == len(sample_reddit_records)
+    assert error_cat is None
+    assert reason is None
+

@@ -273,6 +273,25 @@ def run_graph_pipeline(
 
             density = round(float(nx.density(user_graph)), 6) if num_nodes > 1 else 0.0
 
+            # Authoritative mention count calculation for diagnostic truthfulness
+            total_mentions = 0
+            if reddit_records:
+                for r in reddit_records:
+                    txt = f"{r.get('title_cleaned', '')} {r.get('text_cleaned', '')} {r.get('title', '')} {r.get('text', '')}"
+                    total_mentions += len(builder.extract_mentions(txt))
+            if youtube_records:
+                for y in youtube_records:
+                    txt = f"{y.get('title_cleaned', '')} {y.get('description_cleaned', '')}"
+                    total_mentions += len(builder.extract_mentions(txt))
+
+            logger.info(
+                "Interaction graph topology constructed: %d nodes, %d directed edges (density: %.6f). Extracted mentions: %d.",
+                num_nodes,
+                num_edges,
+                density,
+                total_mentions,
+            )
+
             nodes_list = builder.get_nodes()
             edges_list = builder.get_edges()
 

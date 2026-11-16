@@ -117,9 +117,7 @@ def save_raw_posts(
     return destination
 
 
-# -----------------------------------------------------------------------------
 # Live Reddit API Client Functions (OAuth2)
-# -----------------------------------------------------------------------------
 
 def validate_reddit_user_agent(user_agent: str | None) -> tuple[bool, str | None]:
     """Validates that User-Agent conforms to Reddit's required API standard.
@@ -377,9 +375,7 @@ def ingest_reddit_live(
     }
 
 
-# -----------------------------------------------------------------------------
 # Mock / Synthetic Ingestion (Preserved from Block 2)
-# -----------------------------------------------------------------------------
 
 def ingest_reddit_posts(
     source_path: Path | str | None = None,
@@ -434,10 +430,8 @@ def ingest_reddit_posts(
     }
 
 
-# -----------------------------------------------------------------------------
 # Reddit Data Retention and Deletion Compliance
 # (Reddit Data API Wiki & Developer Terms Compliance)
-# -----------------------------------------------------------------------------
 
 def anonymize_reddit_author(
     author_to_anonymize: str,

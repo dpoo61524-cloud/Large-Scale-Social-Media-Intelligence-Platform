@@ -1456,3 +1456,77 @@ def test_influencer_ranking_output_remains_separate_from_complete_nodes(
         assert inf["node_id"] in nodes_by_id
         assert inf["community_id"] == nodes_by_id[inf["node_id"]]["community_id"]
 
+
+def test_representative_interaction_fixture_demonstrates_connected_graph(tmp_path: Path) -> None:
+    """Verifies that the representative interaction fixture produces non-zero edges,
+    meaningfully differentiated PageRank scores, Louvain community clusters, and valid Schema-v2 output.
+    """
+    fixture_path = Path("data/sample_reddit_interactions.json")
+    assert fixture_path.exists(), "Interaction fixture data/sample_reddit_interactions.json must exist"
+
+    # Also verify original sample fixture exists and remains untouched
+    original_path = Path("data/sample_reddit_posts.json")
+    assert original_path.exists(), "Original fixture data/sample_reddit_posts.json must remain intact"
+
+    # Empty youtube input to isolate reddit interaction network
+    empty_yt = tmp_path / "empty_yt.json"
+    empty_yt.write_text("[]", encoding="utf-8")
+    out_path = tmp_path / "graph_results.json"
+
+    result = run_graph_pipeline(
+        reddit_input_path=fixture_path,
+        youtube_input_path=empty_yt,
+        output_path=out_path,
+    )
+
+    # 1. Pipeline status and schema validity
+    assert result["status"] == "success"
+    is_valid, errors = GraphArtifactValidator.validate_graph_artifact(result)
+    assert is_valid is True, f"Graph artifact validation failed: {errors}"
+
+    # 2. Graph topology: nodes, non-zero edges, and density
+    metrics = result["graph_metrics"]
+    assert metrics["total_users"] == 10
+    assert metrics["total_interactions"] == 19
+    assert metrics["is_directed"] is True
+    assert metrics["density"] > 0.0
+    assert metrics["density"] == pytest.approx(0.2111, abs=1e-4)
+
+    # 3. Directed edge checks and directionality
+    edges = result["edges"]
+    assert len(edges) == 19
+    edge_pairs = {(e["source"], e["target"]) for e in edges}
+    # Verify specific edge directions (source mentions target)
+    assert ("reddit:user:clean_coder_dev", "reddit:user:pipeline_builder") in edge_pairs
+    assert ("reddit:user:clean_coder_dev", "reddit:user:elastic_architect") in edge_pairs
+    assert ("reddit:user:graph_analyst_pro", "reddit:user:pipeline_builder") in edge_pairs
+    assert ("reddit:user:pipeline_builder", "reddit:user:clean_coder_dev") in edge_pairs
+
+    # 4. PageRank differentiation
+    influencers = result["top_influencers"]
+    assert len(influencers) == 10
+    pr_scores = [inf["pagerank"] for inf in influencers]
+    assert len(set(pr_scores)) > 1, "PageRank scores must not be all identical"
+    assert max(pr_scores) > min(pr_scores)
+    # Top ranked influencers have highest PageRank and in-degree
+    top_influencer = influencers[0]
+    assert top_influencer["node_id"] in ("reddit:user:pipeline_builder", "reddit:user:graph_analyst_pro")
+    assert top_influencer["in_degree_raw"] >= 5
+
+    # 5. Community detection
+    assert metrics["communities_count"] == 3
+    community_ids = {inf["community_id"] for inf in influencers}
+    assert len(community_ids) == 3
+
+    # 6. Verify original sample fixture still produces zero edges
+    out_zero = tmp_path / "zero_edges.json"
+    result_zero = run_graph_pipeline(
+        reddit_input_path=original_path,
+        youtube_input_path=empty_yt,
+        output_path=out_zero,
+    )
+    assert result_zero["graph_metrics"]["total_interactions"] == 0
+    assert result_zero["graph_metrics"]["density"] == 0.0
+    assert len(result_zero["edges"]) == 0
+
+

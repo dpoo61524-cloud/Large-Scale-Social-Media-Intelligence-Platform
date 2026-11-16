@@ -224,3 +224,70 @@ def test_calculate_cross_platform_divergence() -> None:
     # Topic 1: 33.3% Reddit, 66.7% YouTube -> over-indexed on YouTube
     assert gaps["1"]["over_indexed_on"] == "youtube"
     assert gaps["1"]["gap_pct"] < 0
+
+
+def test_temporal_tracking_with_real_timestamps_and_multiday_fixtures() -> None:
+    """Tests temporal tracking, trajectories, and divergence with realistic multi-day fixtures."""
+    # 5-day realistic fixture with Reddit created_utc and YouTube published_at
+    records = [
+        # Day 1: 2024-10-27
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730016000},
+        {"source_platform": "youtube", "topic_id": 0, "published_at": "2024-10-27T14:30:00Z"},
+        # Day 2: 2024-10-28 (Topic 0 grows, Topic 1 appears)
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730102400},
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730106000},
+        {"source_platform": "youtube", "topic_id": 0, "published_at": "2024-10-28T10:00:00Z"},
+        {"source_platform": "youtube", "topic_id": 1, "published_at": "2024-10-28T16:00:00Z"},
+        # Day 3: 2024-10-29 (Topic 0 accelerates: 2 -> 3 -> 6, breakout; Topic 1 stable)
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730188800},
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730192400},
+        {"source_platform": "reddit", "topic_id": 0, "created_utc": 1730196000},
+        {"source_platform": "youtube", "topic_id": 0, "published_at": "2024-10-29T08:00:00Z"},
+        {"source_platform": "youtube", "topic_id": 0, "published_at": "2024-10-29T12:00:00Z"},
+        {"source_platform": "youtube", "topic_id": 0, "published_at": "2024-10-29T18:00:00Z"},
+        {"source_platform": "youtube", "topic_id": 1, "published_at": "2024-10-29T20:00:00Z"},
+        # Day 4: 2024-10-30 (Topic -1 noise outliers)
+        {"source_platform": "reddit", "topic_id": -1, "created_utc": 1730275200},
+        {"source_platform": "youtube", "topic_id": -1, "published_at": "2024-10-30T11:00:00Z"},
+    ]
+
+    for rec in records:
+        ts = rec.get("created_utc") or rec.get("published_at")
+        rec["_temporal_timestamp"] = ts
+
+    # 1. Daily tracking
+    daily = TopicTemporalTracker.track_topic_frequency_over_time(
+        records,
+        topic_field="topic_id",
+        time_field="_temporal_timestamp",
+        window="daily",
+    )
+    assert "2024-10-27" in daily["windows"]
+    assert "2024-10-28" in daily["windows"]
+    assert "2024-10-29" in daily["windows"]
+    assert "2024-10-30" in daily["windows"]
+
+    # 2. Dynamics & Trajectories
+    dynamics = TopicTemporalTracker.calculate_topic_dynamics(daily)
+    assert "0" in dynamics
+    # Topic 0 counts across 4 windows: Day 1=2, Day 2=3, Day 3=6, Day 4=0.
+    # Latest transition (Day 3 -> Day 4): v = 0 - 6 = -6 -> DECAY
+    assert dynamics["0"]["status"] == STATUS_DECAY
+    assert dynamics["0"]["velocity"] == -6
+
+    trajectories = TopicTemporalTracker.calculate_topic_trajectories(daily)
+    assert "0" in trajectories
+    assert trajectories["0"]["trajectory"] == TRAJECTORY_FALL
+
+    # 3. Cross-platform divergence
+    div = TopicTemporalTracker.calculate_cross_platform_divergence(
+        records,
+        platform_field="source_platform",
+        topic_field="topic_id",
+        time_field="_temporal_timestamp",
+        window="daily",
+    )
+    assert 0.0 <= div["overall_divergence"] <= 1.0
+    assert "topic_adoption_gaps" in div
+    assert "window_divergences" in div
+

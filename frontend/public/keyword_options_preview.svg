@@ -1,0 +1,300 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="100%" height="100%">
+  <defs>
+    <style>
+      .bg { fill: #FEFCE8; }
+      .header-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 22px; font-weight: 800; fill: #064E3B; }
+      .header-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; fill: #4B6358; }
+      .card-bg { fill: #FFFFFF; stroke: #E2E8D0; stroke-width: 1.5; }
+      .card-header-bar { fill: #FEF9C3; }
+      .opt-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 800; fill: #064E3B; letter-spacing: 0.04em; }
+      .opt-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; fill: #047857; font-weight: 600; }
+      .badge-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; fill: #064E3B; }
+      .doc-count { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 600; fill: #4D6B5D; }
+      .topic-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; font-weight: 700; fill: #064E3B; }
+      .cluster-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; fill: #64748B; }
+      .sec-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 10px; font-weight: 800; fill: #4B6358; letter-spacing: 0.06em; }
+      .kw-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #064E3B; font-weight: 600; }
+      .kw-score { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; fill: #064E3B; font-weight: 700; }
+    </style>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#064E3B" flood-opacity="0.08" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="520" class="bg" />
+
+  <!-- Master Header -->
+  <g transform="translate(40, 42)">
+    <text x="0" y="0" class="header-title">TOPIC CARD KEYWORD VISUALIZATION — 3 NON-BAR OPTIONS</text>
+    <text x="0" y="22" class="header-sub">Eliminates horizontal bar charts in favor of modern, data-dense executive micro-visualizations</text>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- OPTION A: SEMANTIC TAG CHIPS / BADGES                    -->
+  <!-- ======================================================== -->
+  <g transform="translate(40, 95)" filter="url(#shadow)">
+    <!-- Card Base -->
+    <rect width="360" height="395" rx="8" class="card-bg" />
+    <path d="M 0 8 Q 0 0 8 0 L 352 0 Q 360 0 360 8 L 360 38 L 0 38 Z" class="card-header-bar" />
+    <text x="16" y="24" class="opt-label">OPTION A: TAG CHIPS / BADGES</text>
+    <text x="344" y="24" text-anchor="end" class="opt-desc">Recommended</text>
+
+    <!-- Top Accent Line -->
+    <rect x="0" y="38" width="360" height="3.5" fill="#064E3B" />
+
+    <!-- Card Content -->
+    <g transform="translate(18, 56)">
+      <!-- Topic Header -->
+      <rect x="0" y="0" width="70" height="22" rx="4" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="35" y="15" text-anchor="middle" class="badge-id">Topic #4</text>
+      <text x="324" y="16" text-anchor="end" class="doc-count">76 docs (39%)</text>
+
+      <!-- Topic Title & Cluster -->
+      <text x="0" y="44" class="topic-title">AI &amp; Deep Learning Models</text>
+      <text x="0" y="60" class="cluster-id">Cluster ID: 4_ai</text>
+
+      <!-- Section Label -->
+      <text x="0" y="88" class="sec-label">KEY DISCUSSION KEYWORDS</text>
+
+      <!-- Chips Flow Grid (Zero Bars) -->
+      <g transform="translate(0, 100)">
+        <!-- Row 1 -->
+        <g transform="translate(0, 0)">
+          <rect width="154" height="32" rx="6" fill="#FEFCE8" stroke="#064E3B" stroke-width="1.2" />
+          <text x="14" y="20" class="kw-text">ai</text>
+          <rect x="98" y="6" width="46" height="20" rx="4" fill="#064E3B" />
+          <text x="121" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#FEFCE8">0.16</text>
+        </g>
+
+        <g transform="translate(164, 0)">
+          <rect width="160" height="32" rx="6" fill="#FEFCE8" stroke="#047857" stroke-width="1.2" />
+          <text x="14" y="20" class="kw-text">media</text>
+          <rect x="104" y="6" width="46" height="20" rx="4" fill="#047857" />
+          <text x="127" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#FEFCE8">0.11</text>
+        </g>
+
+        <!-- Row 2 -->
+        <g transform="translate(0, 42)">
+          <rect width="154" height="32" rx="6" fill="#FEFCE8" stroke="#0D9488" stroke-width="1.2" />
+          <text x="14" y="20" class="kw-text">social</text>
+          <rect x="98" y="6" width="46" height="20" rx="4" fill="#0D9488" />
+          <text x="121" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#FEFCE8">0.09</text>
+        </g>
+
+        <g transform="translate(164, 42)">
+          <rect width="160" height="32" rx="6" fill="#FEFCE8" stroke="#2D6A4F" stroke-width="1.2" />
+          <text x="12" y="20" class="kw-text">social media</text>
+          <rect x="104" y="6" width="46" height="20" rx="4" fill="#2D6A4F" />
+          <text x="127" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#FEFCE8">0.09</text>
+        </g>
+
+        <!-- Row 3 -->
+        <g transform="translate(0, 84)">
+          <rect width="154" height="32" rx="6" fill="#FEFCE8" stroke="#CBD5B8" stroke-width="1.2" />
+          <text x="14" y="20" class="kw-text">data</text>
+          <rect x="98" y="6" width="46" height="20" rx="4" fill="#4B6358" />
+          <text x="121" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#FEFCE8">0.05</text>
+        </g>
+      </g>
+
+      <!-- Description Note -->
+      <rect x="0" y="255" width="324" height="36" rx="5" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="10" y="272" font-family="sans-serif" font-size="10" fill="#064E3B" font-weight="600">
+        Clean semantic badges. No bar charts. High contrast tags
+      </text>
+      <text x="10" y="284" font-family="sans-serif" font-size="9.5" fill="#4B6358">
+        emphasizing keywords with bold dark green score pills.
+      </text>
+    </g>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- OPTION B: DISCRETE DOT METERS                            -->
+  <!-- ======================================================== -->
+  <g transform="translate(420, 95)" filter="url(#shadow)">
+    <!-- Card Base -->
+    <rect width="360" height="395" rx="8" class="card-bg" />
+    <path d="M 0 8 Q 0 0 8 0 L 352 0 Q 360 0 360 8 L 360 38 L 0 38 Z" class="card-header-bar" />
+    <text x="16" y="24" class="opt-label">OPTION B: DISCRETE DOT METERS</text>
+    <text x="344" y="24" text-anchor="end" class="opt-desc">Quantized Rating</text>
+
+    <!-- Top Accent Line -->
+    <rect x="0" y="38" width="360" height="3.5" fill="#047857" />
+
+    <!-- Card Content -->
+    <g transform="translate(18, 56)">
+      <!-- Topic Header -->
+      <rect x="0" y="0" width="70" height="22" rx="4" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="35" y="15" text-anchor="middle" class="badge-id">Topic #4</text>
+      <text x="324" y="16" text-anchor="end" class="doc-count">76 docs (39%)</text>
+
+      <!-- Topic Title & Cluster -->
+      <text x="0" y="44" class="topic-title">AI &amp; Deep Learning Models</text>
+      <text x="0" y="60" class="cluster-id">Cluster ID: 4_ai</text>
+
+      <!-- Section Label -->
+      <text x="0" y="88" class="sec-label">KEY DISCUSSION KEYWORDS</text>
+
+      <!-- 5-Dot Discrete Meters -->
+      <g transform="translate(0, 102)">
+        <!-- Item 1: ai (0.16 -> 5 dots) -->
+        <g transform="translate(0, 0)">
+          <text x="0" y="16" class="kw-text">ai</text>
+          <!-- 5 Dots -->
+          <circle cx="160" cy="12" r="5" fill="#064E3B" />
+          <circle cx="180" cy="12" r="5" fill="#064E3B" />
+          <circle cx="200" cy="12" r="5" fill="#064E3B" />
+          <circle cx="220" cy="12" r="5" fill="#064E3B" />
+          <circle cx="240" cy="12" r="5" fill="#064E3B" />
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.16</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 2: media (0.11 -> 4 dots) -->
+        <g transform="translate(0, 30)">
+          <text x="0" y="16" class="kw-text">media</text>
+          <circle cx="160" cy="12" r="5" fill="#047857" />
+          <circle cx="180" cy="12" r="5" fill="#047857" />
+          <circle cx="200" cy="12" r="5" fill="#047857" />
+          <circle cx="220" cy="12" r="5" fill="#047857" />
+          <circle cx="240" cy="12" r="5" fill="#E2E8D0" />
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.11</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 3: social (0.09 -> 3 dots) -->
+        <g transform="translate(0, 60)">
+          <text x="0" y="16" class="kw-text">social</text>
+          <circle cx="160" cy="12" r="5" fill="#0D9488" />
+          <circle cx="180" cy="12" r="5" fill="#0D9488" />
+          <circle cx="200" cy="12" r="5" fill="#0D9488" />
+          <circle cx="220" cy="12" r="5" fill="#E2E8D0" />
+          <circle cx="240" cy="12" r="5" fill="#E2E8D0" />
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.09</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 4: social media (0.09 -> 3 dots) -->
+        <g transform="translate(0, 90)">
+          <text x="0" y="16" class="kw-text">social media</text>
+          <circle cx="160" cy="12" r="5" fill="#0D9488" />
+          <circle cx="180" cy="12" r="5" fill="#0D9488" />
+          <circle cx="200" cy="12" r="5" fill="#0D9488" />
+          <circle cx="220" cy="12" r="5" fill="#E2E8D0" />
+          <circle cx="240" cy="12" r="5" fill="#E2E8D0" />
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.09</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 5: data (0.05 -> 2 dots) -->
+        <g transform="translate(0, 120)">
+          <text x="0" y="16" class="kw-text">data</text>
+          <circle cx="160" cy="12" r="5" fill="#4B6358" />
+          <circle cx="180" cy="12" r="5" fill="#4B6358" />
+          <circle cx="200" cy="12" r="5" fill="#E2E8D0" />
+          <circle cx="220" cy="12" r="5" fill="#E2E8D0" />
+          <circle cx="240" cy="12" r="5" fill="#E2E8D0" />
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.05</text>
+        </g>
+      </g>
+
+      <!-- Description Note -->
+      <rect x="0" y="255" width="324" height="36" rx="5" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="10" y="272" font-family="sans-serif" font-size="10" fill="#064E3B" font-weight="600">
+        Quantized 5-dot rating scale. Minimalist &amp; elegant,
+      </text>
+      <text x="10" y="284" font-family="sans-serif" font-size="9.5" fill="#4B6358">
+        conveying relative strength at a glance without continuous bars.
+      </text>
+    </g>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- OPTION C: RADIAL MINI-GAUGES                             -->
+  <!-- ======================================================== -->
+  <g transform="translate(800, 95)" filter="url(#shadow)">
+    <!-- Card Base -->
+    <rect width="360" height="395" rx="8" class="card-bg" />
+    <path d="M 0 8 Q 0 0 8 0 L 352 0 Q 360 0 360 8 L 360 38 L 0 38 Z" class="card-header-bar" />
+    <text x="16" y="24" class="opt-label">OPTION C: RADIAL MINI-GAUGES</text>
+    <text x="344" y="24" text-anchor="end" class="opt-desc">Circular Micro-Arcs</text>
+
+    <!-- Top Accent Line -->
+    <rect x="0" y="38" width="360" height="3.5" fill="#0D9488" />
+
+    <!-- Card Content -->
+    <g transform="translate(18, 56)">
+      <!-- Topic Header -->
+      <rect x="0" y="0" width="70" height="22" rx="4" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="35" y="15" text-anchor="middle" class="badge-id">Topic #4</text>
+      <text x="324" y="16" text-anchor="end" class="doc-count">76 docs (39%)</text>
+
+      <!-- Topic Title & Cluster -->
+      <text x="0" y="44" class="topic-title">AI &amp; Deep Learning Models</text>
+      <text x="0" y="60" class="cluster-id">Cluster ID: 4_ai</text>
+
+      <!-- Section Label -->
+      <text x="0" y="88" class="sec-label">KEY DISCUSSION KEYWORDS</text>
+
+      <!-- Circular Mini Gauges List -->
+      <g transform="translate(0, 102)">
+        <!-- Item 1: ai (0.16 -> 100% circle) -->
+        <g transform="translate(0, 0)">
+          <!-- Outer track -->
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#FEF9C3" stroke-width="3" />
+          <!-- Filled Arc (almost full 300 deg) -->
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#064E3B" stroke-width="3" stroke-dasharray="55 63" transform="rotate(-90 16 11)" />
+          <text x="38" y="16" class="kw-text">ai</text>
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.16</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 2: media (0.11 -> 70% circle) -->
+        <g transform="translate(0, 30)">
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#FEF9C3" stroke-width="3" />
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#047857" stroke-width="3" stroke-dasharray="42 63" transform="rotate(-90 16 11)" />
+          <text x="38" y="16" class="kw-text">media</text>
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.11</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 3: social (0.09 -> 55% circle) -->
+        <g transform="translate(0, 60)">
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#FEF9C3" stroke-width="3" />
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#0D9488" stroke-width="3" stroke-dasharray="34 63" transform="rotate(-90 16 11)" />
+          <text x="38" y="16" class="kw-text">social</text>
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.09</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 4: social media (0.09 -> 55% circle) -->
+        <g transform="translate(0, 90)">
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#FEF9C3" stroke-width="3" />
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#0D9488" stroke-width="3" stroke-dasharray="34 63" transform="rotate(-90 16 11)" />
+          <text x="38" y="16" class="kw-text">social media</text>
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.09</text>
+          <line x1="0" y1="26" x2="324" y2="26" stroke="#FEF9C3" stroke-width="1" />
+        </g>
+
+        <!-- Item 5: data (0.05 -> 30% circle) -->
+        <g transform="translate(0, 120)">
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#FEF9C3" stroke-width="3" />
+          <circle cx="16" cy="11" r="10" fill="none" stroke="#4B6358" stroke-width="3" stroke-dasharray="19 63" transform="rotate(-90 16 11)" />
+          <text x="38" y="16" class="kw-text">data</text>
+          <text x="324" y="16" text-anchor="end" class="kw-score">0.05</text>
+        </g>
+      </g>
+
+      <!-- Description Note -->
+      <rect x="0" y="255" width="324" height="36" rx="5" fill="#FEF9C3" stroke="#E2E8D0" />
+      <text x="10" y="272" font-family="sans-serif" font-size="10" fill="#064E3B" font-weight="600">
+        Circular donut micro-gauges. High visual polish,
+      </text>
+      <text x="10" y="284" font-family="sans-serif" font-size="9.5" fill="#4B6358">
+        showing keyword intensity as circular arcs rather than bars.
+      </text>
+    </g>
+  </g>
+</svg>
+

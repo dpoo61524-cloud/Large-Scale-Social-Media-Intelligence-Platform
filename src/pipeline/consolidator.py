@@ -1305,7 +1305,6 @@ def consolidate_social_intelligence(
                 },
             }
 
-        # Step 3: Sentiment Resolution (Validates explicit status safely; rejects missing/invalid status)
         sent_rec = sentiment_map.get((platform, native_id))
         if s_state in {"missing", "empty"}:
             sent_status = "unavailable"
@@ -1355,7 +1354,6 @@ def consolidate_social_intelligence(
             sent_label = None
             sent_score = None
 
-        # Step 4: Topics Resolution (Enforces explicit status validation and pairing rules safely)
         top_rec = topic_map.get((platform, native_id))
         if t_state in {"missing", "empty"}:
             top_status = "unavailable"
@@ -1445,7 +1443,6 @@ def consolidate_social_intelligence(
             top_prob = None
             top_keywords = []
 
-        # Step 6: Misinformation Resolution (Validates explicit status safely; rejects missing/invalid status)
         mis_rec = misinfo_map.get((platform, native_id))
         if m_state in {"missing", "empty"}:
             mis_status = "unavailable"
@@ -1477,6 +1474,10 @@ def consolidate_social_intelligence(
                 m_clean = raw_m_status.strip()
                 if m_clean == "success":
                     raw_veracity = mis_rec.get("veracity_label")
+                    if str(raw_veracity).strip() in {"1", "real", "true"}:
+                        raw_veracity = "real"
+                    elif str(raw_veracity).strip() in {"0", "fake", "false"}:
+                        raw_veracity = "fake"
                     raw_cred = mis_rec.get("credibility_score")
                     raw_risk = mis_rec.get("risk_tier")
                     raw_signals = mis_rec.get("stylometric_signals")

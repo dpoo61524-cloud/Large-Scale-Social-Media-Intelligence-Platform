@@ -1,9 +1,0 @@
-# Optional: Live External Cluster Integrations
-# Extends base requirements with packages needed exclusively for connecting
-# to live external services (e.g. active Elasticsearch cluster indexing).
-#
-# NOTE: This file covers the Elasticsearch client only. Neo4j (neo4j>=5.15.0)
-# is already declared in requirements.txt. Kibana validation and import utilize
-# standard library HTTP transport (urllib.request) with zero additional packages.
--r requirements.txt
-elasticsearch>=8.0.0,<9.0.0

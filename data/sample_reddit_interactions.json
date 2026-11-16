@@ -1,0 +1,113 @@
+[
+  {
+    "post_id": "t3_int_1001",
+    "subreddit": "datascience",
+    "title": "[Synthetic Demo] Data pipeline architecture sync with u/clean_coder_dev",
+    "text": "Collaborating with u/clean_coder_dev and u/elastic_architect on Schema-v2 data pipeline orchestration. What distributed ingestion patterns do you prefer?",
+    "author": "pipeline_builder",
+    "created_utc": 1730101200,
+    "score": 142,
+    "num_comments": 28,
+    "url": "https://reddit.com/r/datascience/comments/int_1001/synthetic_pipeline_architecture_sync"
+  },
+  {
+    "post_id": "t3_int_1002",
+    "subreddit": "Python",
+    "title": "[Synthetic Demo] Refactoring ingestion modules and memory guards",
+    "text": "Thanks u/pipeline_builder for reviewing the memory check implementation. Also syncing with u/elastic_architect on index schema models.",
+    "author": "clean_coder_dev",
+    "created_utc": 1730104800,
+    "score": 215,
+    "num_comments": 37,
+    "url": "https://reddit.com/r/Python/comments/int_1002/synthetic_refactoring_ingestion_modules"
+  },
+  {
+    "post_id": "t3_int_1003",
+    "subreddit": "elasticsearch",
+    "title": "[Synthetic Demo] Elasticsearch bulk ingestion benchmarks and retry backoff",
+    "text": "Testing bulk ingest rates provided by u/pipeline_builder and crawling throughput from u/crawl_master_99 for cluster performance tuning.",
+    "author": "elastic_architect",
+    "created_utc": 1730108400,
+    "score": 175,
+    "num_comments": 22,
+    "url": "https://reddit.com/r/elasticsearch/comments/int_1003/synthetic_bulk_ingestion_benchmarks"
+  },
+  {
+    "post_id": "t3_int_1004",
+    "subreddit": "datascience",
+    "title": "[Synthetic Demo] API rate limiting and persistent crawler state",
+    "text": "Implementing exponential backoff and connection retries as suggested by u/clean_coder_dev during our data engineering architecture sync.",
+    "author": "crawl_master_99",
+    "created_utc": 1730112000,
+    "score": 312,
+    "num_comments": 45,
+    "url": "https://reddit.com/r/datascience/comments/int_1004/synthetic_rate_limiting_crawler_state"
+  },
+  {
+    "post_id": "t3_int_1005",
+    "subreddit": "MachineLearning",
+    "title": "[Synthetic Demo] Dynamic topic discovery and dense embedding evaluation",
+    "text": "Comparing BERTopic clusters against interaction network communities identified by u/graph_analyst_pro and evaluated with u/transformer_nerd.",
+    "author": "latent_space_explorer",
+    "created_utc": 1730115600,
+    "score": 389,
+    "num_comments": 64,
+    "url": "https://reddit.com/r/MachineLearning/comments/int_1005/synthetic_dynamic_topic_discovery"
+  },
+  {
+    "post_id": "t3_int_1006",
+    "subreddit": "technology",
+    "title": "[Synthetic Demo] PageRank and Louvain community metrics in online networks",
+    "text": "In-depth graph analysis with u/latent_space_explorer and u/truth_tracker_ai on structural network properties. Also sharing dataset with u/pipeline_builder.",
+    "author": "graph_analyst_pro",
+    "created_utc": 1730119200,
+    "score": 530,
+    "num_comments": 92,
+    "url": "https://reddit.com/r/technology/comments/int_1006/synthetic_pagerank_louvain_metrics"
+  },
+  {
+    "post_id": "t3_int_1007",
+    "subreddit": "artificial",
+    "title": "[Synthetic Demo] Cross-lingual embeddings for social interaction nodes",
+    "text": "Evaluating node embeddings on directed interaction graphs mapped by u/graph_analyst_pro and cross-validated against benchmarks by u/truth_tracker_ai.",
+    "author": "transformer_nerd",
+    "created_utc": 1730122800,
+    "score": 420,
+    "num_comments": 58,
+    "url": "https://reddit.com/r/artificial/comments/int_1007/synthetic_cross_lingual_embeddings"
+  },
+  {
+    "post_id": "t3_int_1008",
+    "subreddit": "LanguageTechnology",
+    "title": "[Synthetic Demo] Misinformation propagation cascades across network clusters",
+    "text": "Analyzing misinformation diffusion patterns using structural network centrality models formulated by u/graph_analyst_pro.",
+    "author": "truth_tracker_ai",
+    "created_utc": 1730126400,
+    "score": 98,
+    "num_comments": 15,
+    "url": "https://reddit.com/r/LanguageTechnology/comments/int_1008/synthetic_misinformation_propagation"
+  },
+  {
+    "post_id": "t3_int_1009",
+    "subreddit": "networkx",
+    "title": "[Synthetic Demo] Cross-community boundary spanners and network bridges",
+    "text": "Visualizing inter-community bridges connecting analytics lead u/graph_analyst_pro and platform engineering lead u/pipeline_builder.",
+    "author": "network_viz_fan",
+    "created_utc": 1730130000,
+    "score": 267,
+    "num_comments": 31,
+    "url": "https://reddit.com/r/networkx/comments/int_1009/synthetic_cross_community_bridges"
+  },
+  {
+    "post_id": "t3_int_1010",
+    "subreddit": "Python",
+    "title": "[Synthetic Demo] Automated verification of social interaction topologies",
+    "text": "Writing pytest assertions for directed interaction networks generated by u/pipeline_builder and analyzed by u/graph_analyst_pro.",
+    "author": "qa_enthusiast_py",
+    "created_utc": 1730133600,
+    "score": 188,
+    "num_comments": 19,
+    "url": "https://reddit.com/r/Python/comments/int_1010/synthetic_topology_verification"
+  }
+]
+

@@ -293,7 +293,6 @@ class MisinformationDetector:
             detected_signals_list.append(f"multiple_exclamations:{excl_count}")
 
         # Case 2: Contextual protections (debunking, educational, investigative, critical quotation)
-        # CRITICAL RULES (Stage 9B.1):
         # 1. Suppress automatic 'fake' or 'high_risk' heuristic overrides from conspiracy/sensational patterns.
         # 2. Do NOT automatically force 'real' or 'low_risk'.
         # 3. Preserve underlying classifier prediction and score without artificial inflation.

@@ -75,9 +75,7 @@ from src.topics.topic_pipeline import run_topic_pipeline
 
 logger = logging.getLogger(__name__)
 
-# =====================================================================
 # Canonical 12-Stage Registry & Execution Manifest Foundation
-# =====================================================================
 
 CANONICAL_STAGES: tuple[str, ...] = (
     "reddit_ingestion",
@@ -135,6 +133,80 @@ def validate_run_id(run_id: str) -> bool:
     return bool(isinstance(run_id, str) and RUN_ID_PATTERN.match(run_id))
 
 
+def get_available_memory_mb() -> float:
+    """Returns available physical RAM in megabytes using standard-library ctypes.
+
+    Returns:
+        Available physical memory in MB, or -1.0 if unsupported or unavailable.
+    """
+    try:
+        import ctypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return float(stat.ullAvailPhys) / (1024.0 * 1024.0)
+    except Exception:
+        pass
+    return -1.0
+
+
+def check_orchestrator_stage_memory(
+    stage_name: str,
+    min_mb: float = 150.0,
+) -> tuple[bool, float, Optional[str], Optional[str]]:
+    """Evaluates available physical memory before heavy pipeline stages with fail-closed semantics.
+
+    Args:
+        stage_name: Identifier of the stage to evaluate ('sentiment' or 'topics').
+        min_mb: Minimum required available physical memory threshold in MB.
+
+    Returns:
+        Tuple of (is_safe: bool, available_mb: float, error_category: Optional[str], reason: Optional[str]).
+    """
+    avail = get_available_memory_mb()
+    if avail < 0.0:
+        logger.warning(
+            "Physical memory availability could not be measured before stage '%s'; failing closed.",
+            stage_name,
+        )
+        return (
+            False,
+            avail,
+            "memory_availability_unmeasurable",
+            f"Physical memory availability could not be measured before executing stage '{stage_name}'; failing closed.",
+        )
+
+    if avail < min_mb:
+        logger.warning(
+            "Available physical memory (%.2f MB) is below safe threshold (%.2f MB) for stage '%s'.",
+            avail,
+            min_mb,
+            stage_name,
+        )
+        return (
+            False,
+            avail,
+            "insufficient_memory",
+            f"Available physical memory ({avail:.2f} MB) is below safe threshold ({min_mb:.2f} MB) for stage '{stage_name}'.",
+        )
+
+    return True, avail, None, None
+
+
 def is_pid_alive(pid: int) -> bool:
     """Checks whether a process with the given PID is currently active.
 
@@ -183,7 +255,6 @@ class OrchestrationLock:
         hostname = socket.gethostname()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # Step 1: Pre-acquisition safety inspection for uncertain/corrupt metadata
         # If the file already exists on disk and is non-empty, verify its metadata integrity first.
         # This guarantees that corrupt files require manual intervention and cannot be unsafely overwritten.
         existing_info: dict[str, Any] = {}
@@ -204,7 +275,6 @@ class OrchestrationLock:
                     "Manual inspection or intervention required to prevent concurrent execution conflicts."
                 ) from verify_err
 
-        # Step 2: Open file descriptor
         try:
             fd = os.open(str(self.lock_path), os.O_CREAT | os.O_RDWR, 0o644)
         except OSError as open_err:
@@ -212,7 +282,6 @@ class OrchestrationLock:
                 f"Failed to open orchestration lock file at {self.lock_path}: {open_err}"
             ) from open_err
 
-        # Step 3: Attempt non-blocking OS advisory lock
         locked = False
         try:
             if HAS_MSVCRT:
@@ -253,7 +322,6 @@ class OrchestrationLock:
                         existing_info.get("run_id"),
                     )
 
-            # Step 4: Write lock metadata while holding the OS lock
             lock_data = {
                 "pid": pid,
                 "run_id": run_id,
@@ -784,9 +852,7 @@ def _print_ingestion_summary(name: str, summary: dict) -> None:
     print("-" * 68)
 
 
-# =====================================================================
 # STEP 7.5C — Block 3A: Reddit Ingestion Stage Execution & Validation
-# =====================================================================
 
 def validate_reddit_ingestion_output(
     summary: Any,
@@ -1031,9 +1097,7 @@ def execute_reddit_ingestion_stage(
         )
 
 
-# =====================================================================
 # STEP 7.5C — Block 3B: YouTube Ingestion Stage Execution & Validation
-# =====================================================================
 
 def validate_youtube_ingestion_output(
     summary: Any,
@@ -1297,9 +1361,7 @@ def execute_youtube_ingestion_stage(
         )
 
 
-# =====================================================================
 # STEP 7.5C — Block 4A: Reddit Preprocessing Execution & Validation
-# =====================================================================
 
 def validate_reddit_preprocessing_output(
     summary: Any,
@@ -1616,9 +1678,7 @@ def execute_reddit_preprocessing_stage(
         )
 
 
-# =====================================================================
 # STEP 7.5C — Block 4B: YouTube Preprocessing Execution & Validation
-# =====================================================================
 
 def validate_youtube_preprocessing_output(
     summary: Any,
@@ -1980,12 +2040,14 @@ def execute_youtube_preprocessing_stage(
         )
 
 
-# =====================================================================
 # STEP 7.5C — Block 5B: Sentiment Output Validation
-# =====================================================================
 
 PERMITTED_SENTIMENT_LABELS: frozenset[str] = frozenset(
     {"positive", "neutral", "negative", "undetermined"}
+)
+
+PERMITTED_SENTIMENT_RECORD_STATUSES: frozenset[str] = frozenset(
+    {"success", "error", "fallback", "empty_text"}
 )
 
 
@@ -2407,7 +2469,11 @@ def validate_sentiment_output(
             )
 
         status_val = rec.get("sentiment_status")
-        if not isinstance(status_val, str) or not status_val.strip():
+        if (
+            not isinstance(status_val, str)
+            or not status_val.strip()
+            or status_val not in PERMITTED_SENTIMENT_RECORD_STATUSES
+        ):
             return (
                 False,
                 0,
@@ -2478,7 +2544,11 @@ def validate_sentiment_output(
             )
 
         status_val = rec.get("sentiment_status")
-        if not isinstance(status_val, str) or not status_val.strip():
+        if (
+            not isinstance(status_val, str)
+            or not status_val.strip()
+            or status_val not in PERMITTED_SENTIMENT_RECORD_STATUSES
+        ):
             return (
                 False,
                 0,
@@ -2507,9 +2577,7 @@ def validate_sentiment_output(
     return True, total_records, None, None
 
 
-# =====================================================================
 # STEP 7.5C — Block 5C: Sentiment Stage Execution and Atomic Promotion
-# =====================================================================
 
 
 def _safe_unlink_temp_file(temp_path: Optional[Path]) -> None:
@@ -2935,9 +3003,7 @@ def execute_sentiment_stage(
         )
 
 
-# =====================================================================
 # STEP 7.6C — Block 6C: Topic Output Validation
-# =====================================================================
 
 
 def _validate_topic_keywords(keywords: Any) -> tuple[bool, Optional[str]]:
@@ -3671,9 +3737,7 @@ def validate_topic_output(
     return True, total_records, None, None
 
 
-# =====================================================================
 # STEP 7.6D — Block 6D: Topic Stage Execution and Atomic Promotion
-# =====================================================================
 
 
 def _validate_active_topic_source_file(
@@ -4085,9 +4149,6 @@ def execute_topic_stage(
         )
 
 
-# =====================================================================
-# Company Step 5 Graph Analysis Stage (Stage 7)
-# =====================================================================
 
 
 def _validate_active_processed_source_file(
@@ -4454,12 +4515,17 @@ def execute_graph_stage(
             )
 
         final_status = status_val if status_val in PERMITTED_STAGE_STATUSES else "success"
-        record_count = summary.get("graph_metrics", {}).get("total_users", 0)
+        graph_metrics = summary.get("graph_metrics", {}) if isinstance(summary, dict) else {}
+        record_count = graph_metrics.get("total_users", 0)
+        num_edges = graph_metrics.get("total_edges", 0)
+        density = graph_metrics.get("density", 0.0)
 
         logger.info(
-            "Graph analysis stage succeeded with status '%s' and %d user nodes. Canonical output: %s",
+            "Graph analysis stage succeeded with status '%s' (%d user nodes, %d directed edges, density: %.6f). Canonical output: %s",
             final_status,
             record_count,
+            num_edges,
+            density,
             resolved_canonical.name,
         )
         return (
@@ -4489,9 +4555,6 @@ def execute_graph_stage(
         )
 
 
-# =====================================================================
-# Company Step 6 Neo4j Persistence Stage (Stage 8)
-# =====================================================================
 
 
 def execute_neo4j_stage(
@@ -4712,9 +4775,6 @@ def execute_neo4j_stage(
         )
 
 
-# =====================================================================
-# Company Step 7 Misinformation Detection Stage (Stage 9)
-# =====================================================================
 
 
 def execute_misinformation_stage(
@@ -5034,9 +5094,6 @@ def execute_misinformation_stage(
         )
 
 
-# =====================================================================
-# Company Step 8 Social Intelligence Consolidation Stage (Stage 10)
-# =====================================================================
 
 
 def execute_consolidation_stage(
@@ -5316,7 +5373,57 @@ def execute_consolidation_stage(
                 None,
             )
 
-        total_records = payload.get("total_records", 0)
+        # Authoritative Schema-v2 record count extraction with defensive verification
+        metrics = payload.get("metrics") if isinstance(payload, dict) else None
+        if not isinstance(metrics, dict):
+            elapsed = time.perf_counter() - start_time
+            logger.warning("Consolidation stage failed: payload missing valid 'metrics' dictionary.")
+            return (
+                create_initial_stage_entry(
+                    status="failed",
+                    reason="Consolidation payload missing valid metrics object",
+                    record_count=0,
+                    duration_seconds=elapsed,
+                    error_category="invalid_metrics",
+                ),
+                None,
+            )
+
+        raw_count = metrics.get("total_records_consolidated")
+        if isinstance(raw_count, bool) or not isinstance(raw_count, int) or raw_count < 0:
+            elapsed = time.perf_counter() - start_time
+            logger.warning("Consolidation stage failed: 'total_records_consolidated' is not a non-negative integer (%r).", raw_count)
+            return (
+                create_initial_stage_entry(
+                    status="failed",
+                    reason="Invalid total_records_consolidated metric in payload",
+                    record_count=0,
+                    duration_seconds=elapsed,
+                    error_category="invalid_metrics",
+                ),
+                None,
+            )
+
+        records_list = payload.get("records")
+        if not isinstance(records_list, list) or len(records_list) != raw_count:
+            elapsed = time.perf_counter() - start_time
+            logger.warning(
+                "Consolidation stage failed: metrics count (%s) does not match records length (%s).",
+                raw_count,
+                len(records_list) if isinstance(records_list, list) else type(records_list).__name__,
+            )
+            return (
+                create_initial_stage_entry(
+                    status="failed",
+                    reason="Consolidation metrics count does not match records length",
+                    record_count=0,
+                    duration_seconds=elapsed,
+                    error_category="inconsistent_metrics",
+                ),
+                None,
+            )
+
+        total_records = raw_count
         c_status = payload.get("consolidation_status")
 
         if total_records == 0:
@@ -5359,9 +5466,6 @@ def execute_consolidation_stage(
         )
 
 
-# =====================================================================
-# Company Step 9 Elasticsearch Indexing Stage (Stage 11)
-# =====================================================================
 
 
 def execute_elasticsearch_indexing_stage(
@@ -5587,9 +5691,6 @@ def execute_elasticsearch_indexing_stage(
         )
 
 
-# =====================================================================
-# Company Step 10 Kibana Dashboard Validation Stage (Stage 12)
-# =====================================================================
 
 
 def execute_kibana_validation_stage(
@@ -5768,6 +5869,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Skip Neo4j Cypher batch persistence during --run-all.",
     )
     orchestration_group.add_argument(
+        "--skip-elasticsearch",
+        action="store_true",
+        default=False,
+        help="Skip Elasticsearch bulk indexing during --run-all.",
+    )
+    orchestration_group.add_argument(
         "--skip-kibana",
         action="store_true",
         default=False,
@@ -5857,6 +5964,8 @@ def parse_cli_arguments(
         skip_flags.append("--skip-youtube")
     if parsed.skip_neo4j:
         skip_flags.append("--skip-neo4j")
+    if parsed.skip_elasticsearch:
+        skip_flags.append("--skip-elasticsearch")
     if parsed.skip_kibana:
         skip_flags.append("--skip-kibana")
 
@@ -5920,7 +6029,6 @@ def promote_run_to_canonical(
         "pipeline_execution_manifest.json": p_dir / "pipeline_execution_manifest.json",
     }
 
-    # Step 1: Validate source files
     source_pairs: list[tuple[str, Path, Path]] = []
     for filename, target_path in mapping.items():
         src = run_dir / filename
@@ -5935,7 +6043,6 @@ def promote_run_to_canonical(
         logger.warning("No artifacts found in %s to promote to canonical storage.", run_dir)
         return {}
 
-    # Step 2: Prepare backup directory and stage backups of existing canonical files
     backup_dir = p_dir / f".backup_promote_{uuid.uuid4().hex[:8]}"
     backup_dir.mkdir(parents=True, exist_ok=True)
     backed_up_canonical: dict[Path, Path] = {}
@@ -5950,20 +6057,17 @@ def promote_run_to_canonical(
                 shutil.copy2(target_path, backup_dest)
                 backed_up_canonical[target_path] = backup_dest
 
-        # Step 3: Stage all source files into temporary target files alongside destinations
         for filename, src, target_path in source_pairs:
             temp_target = target_path.parent / f".tmp_stage_{uuid.uuid4().hex[:8]}_{filename}"
             shutil.copy2(src, temp_target)
             staged_temp_files.append((temp_target, target_path, filename))
 
-        # Step 4: Atomic replacement with rollback tracking
         promoted: dict[str, str] = {}
         for temp_target, target_path, filename in staged_temp_files:
             os.replace(temp_target, target_path)
             replaced_targets.append(target_path)
             promoted[filename] = str(target_path)
 
-        # Step 5: Clean up backup directory on full success
         shutil.rmtree(backup_dir, ignore_errors=True)
         logger.info(
             "Successfully promoted %d artifacts from %s to canonical directories with rollback safety.",
@@ -6069,7 +6173,6 @@ def run_orchestrated_pipeline(
 
         logger.info("Starting unified 12-stage orchestration run %s in %s", effective_run_id, run_dir)
 
-        # Stage 1: reddit_ingestion
         reddit_raw_target = run_dir / "reddit_posts_raw.json"
         stage1_entry, reddit_raw_path = execute_reddit_ingestion_stage(
             skip=args.skip_reddit,
@@ -6078,16 +6181,16 @@ def run_orchestrated_pipeline(
         )
         stages["reddit_ingestion"] = stage1_entry
 
-        # Stage 2: youtube_ingestion
         youtube_raw_target = run_dir / "youtube_videos_raw.json"
         stage2_entry, youtube_raw_path = execute_youtube_ingestion_stage(
             skip=args.skip_youtube,
             canonical_output_path=youtube_raw_target,
             config=resolved_config,
+            max_pages=2,
+            max_results_per_page=50,
         )
         stages["youtube_ingestion"] = stage2_entry
 
-        # Stage 3: reddit_preprocessing
         reddit_proc_target = run_dir / "reddit_posts_processed.json"
         skip_r_proc = args.skip_reddit or (stage1_entry.get("status") != "success")
         stage3_entry, reddit_proc_path = execute_reddit_preprocessing_stage(
@@ -6099,7 +6202,6 @@ def run_orchestrated_pipeline(
         )
         stages["reddit_preprocessing"] = stage3_entry
 
-        # Stage 4: youtube_preprocessing
         youtube_proc_target = run_dir / "youtube_videos_processed.json"
         skip_y_proc = args.skip_youtube or (stage2_entry.get("status") != "success")
         stage4_entry, youtube_proc_path = execute_youtube_preprocessing_stage(
@@ -6111,126 +6213,211 @@ def run_orchestrated_pipeline(
         )
         stages["youtube_preprocessing"] = stage4_entry
 
-        # Stage 5: sentiment
-        sentiment_target = run_dir / "sentiment_analysis_results.json"
-        stage5_entry, sentiment_path = execute_sentiment_stage(
-            reddit_processed_path=reddit_proc_path,
-            youtube_processed_path=youtube_proc_path,
-            skip=False,
-            canonical_output_path=sentiment_target,
-            config=resolved_config,
-            reddit_stage_entry=stage3_entry,
-            youtube_stage_entry=stage4_entry,
-        )
-        if stage5_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
-            stage5_entry["status"] = "partial"
-            stage5_entry["reason"] = "single_platform_execution"
-        stages["sentiment"] = stage5_entry
-
-        # Stage 6: topics
-        topics_target = run_dir / "topic_modeling_results.json"
-        stage6_entry, topics_path = execute_topic_stage(
-            reddit_processed_path=reddit_proc_path,
-            youtube_processed_path=youtube_proc_path,
-            skip=False,
-            canonical_output_path=topics_target,
-            config=resolved_config,
-            reddit_stage_entry=stage3_entry,
-            youtube_stage_entry=stage4_entry,
-        )
-        if stage6_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
-            stage6_entry["status"] = "partial"
-            stage6_entry["reason"] = "single_platform_execution"
-        stages["topics"] = stage6_entry
-
-        # Stage 7: graph
-        graph_target = run_dir / "graph_analysis_results.json"
-        stage7_entry, graph_path = execute_graph_stage(
-            reddit_processed_path=reddit_proc_path,
-            youtube_processed_path=youtube_proc_path,
-            skip=False,
-            canonical_output_path=graph_target,
-            config=resolved_config,
-            reddit_stage_entry=stage3_entry,
-            youtube_stage_entry=stage4_entry,
-        )
-        if stage7_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
-            stage7_entry["status"] = "partial"
-            stage7_entry["reason"] = "single_platform_execution"
-        stages["graph"] = stage7_entry
-
-        # Stage 8: neo4j_persistence
-        stage8_entry, _ = execute_neo4j_stage(
-            graph_artifact_path=graph_path,
-            skip=args.skip_neo4j,
-            graph_stage_entry=stage7_entry,
-            manager=None,
-            manager_factory=None,
-        )
-        stages["neo4j_persistence"] = stage8_entry
-
-        # Stage 9: misinformation
-        misinfo_target = run_dir / "misinformation_analysis_results.json"
-        stage9_entry, misinfo_path = execute_misinformation_stage(
-            reddit_processed_path=reddit_proc_path,
-            youtube_processed_path=youtube_proc_path,
-            skip=False,
-            canonical_output_path=misinfo_target,
-            config=resolved_config,
-            reddit_stage_entry=stage3_entry,
-            youtube_stage_entry=stage4_entry,
-        )
-        if stage9_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
-            stage9_entry["status"] = "partial"
-            stage9_entry["reason"] = "single_platform_execution"
-        stages["misinformation"] = stage9_entry
-
-        # Stage 10: consolidation
-        consolidation_target = run_dir / "consolidated_intelligence.json"
-        stage10_entry, consolidation_path = execute_consolidation_stage(
-            reddit_processed_path=reddit_proc_path,
-            youtube_processed_path=youtube_proc_path,
-            sentiment_path=sentiment_path,
-            topics_path=topics_path,
-            graph_path=graph_path,
-            misinformation_path=misinfo_path,
-            skip=False,
-            canonical_output_path=consolidation_target,
-            config=resolved_config,
-            reddit_stage_entry=stage3_entry,
-            youtube_stage_entry=stage4_entry,
-            sentiment_stage_entry=stage5_entry,
-            topic_stage_entry=stage6_entry,
-            graph_stage_entry=stage7_entry,
-            misinformation_stage_entry=stage9_entry,
-        )
-        if stage10_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
-            stage10_entry["status"] = "partial"
-            stage10_entry["reason"] = "single_platform_execution"
-        stages["consolidation"] = stage10_entry
-
-        # Stage 11: elasticsearch_indexing
+        # Artifact path initialization for manifest tracking
+        sentiment_path: Optional[Path] = None
+        topics_path: Optional[Path] = None
+        graph_path: Optional[Path] = None
+        misinfo_path: Optional[Path] = None
+        consolidation_path: Optional[Path] = None
         es_manifest_target = run_dir / "elasticsearch_indexing_manifest.json"
-        stage11_entry, _ = execute_elasticsearch_indexing_stage(
-            consolidated_path=consolidation_path,
-            skip=False,
-            consolidation_stage_entry=stage10_entry,
-            client=None,
-            manifest_path=es_manifest_target,
-        )
-        stages["elasticsearch_indexing"] = stage11_entry
 
-        # Stage 12: kibana_validation
-        stage12_entry, _ = execute_kibana_validation_stage(
-            bundle_path=None,
-            skip=args.skip_kibana,
-            indexing_stage_entry=stage11_entry,
-        )
-        stage12_entry["mode"] = "offline_bundle_validation"
-        stage12_entry["scope"] = (
-            "Offline saved-object bundle schema, reference, and mapping-conformance validation (41 objects)."
-        )
-        stages["kibana_validation"] = stage12_entry
+        sentiment_target = run_dir / "sentiment_analysis_results.json"
+        mem_ok_s5, _, err_cat_s5, mem_reason_s5 = check_orchestrator_stage_memory("sentiment", min_mb=150.0)
+        if not mem_ok_s5:
+            logger.error("Pre-flight memory check failed for stage 'sentiment': %s (%s)", mem_reason_s5, err_cat_s5)
+            stages["sentiment"] = create_initial_stage_entry(
+                status="failed",
+                reason=mem_reason_s5,
+                record_count=0,
+                duration_seconds=0.0,
+                error_category=err_cat_s5,
+            )
+            for downstream in CANONICAL_STAGES[5:]:
+                stages[downstream] = create_initial_stage_entry(
+                    status="skipped",
+                    reason="prior_stage_failure",
+                    record_count=0,
+                    duration_seconds=0.0,
+                    error_category=None,
+                )
+        else:
+            stage5_entry, sentiment_path = execute_sentiment_stage(
+                reddit_processed_path=reddit_proc_path,
+                youtube_processed_path=youtube_proc_path,
+                skip=False,
+                canonical_output_path=sentiment_target,
+                config=resolved_config,
+                reddit_stage_entry=stage3_entry,
+                youtube_stage_entry=stage4_entry,
+            )
+            if stage5_entry.get("status") in {"success", "partial"}:
+                if stage5_entry.get("record_count", 0) == 0:
+                    stage5_entry["status"] = "empty"
+                    stage5_entry["reason"] = "empty_input_dataset"
+                else:
+                    has_reddit = (stage3_entry.get("status") == "success" and stage3_entry.get("record_count", 0) > 0)
+                    has_youtube = (stage4_entry.get("status") == "success" and stage4_entry.get("record_count", 0) > 0)
+                    if has_reddit and has_youtube:
+                        stage5_entry["status"] = "success"
+                        stage5_entry["reason"] = None
+                    elif has_reddit and not has_youtube:
+                        stage5_entry["status"] = "partial"
+                        stage5_entry["reason"] = "single_platform_reddit_only"
+                    elif has_youtube and not has_reddit:
+                        stage5_entry["status"] = "partial"
+                        stage5_entry["reason"] = "single_platform_youtube_only"
+                    else:
+                        stage5_entry["status"] = "partial"
+                        stage5_entry["reason"] = "single_platform_execution"
+            stages["sentiment"] = stage5_entry
+
+            topics_target = run_dir / "topic_modeling_results.json"
+            mem_ok_s6, _, err_cat_s6, mem_reason_s6 = check_orchestrator_stage_memory("topics", min_mb=150.0)
+            if not mem_ok_s6:
+                logger.error("Pre-flight memory check failed for stage 'topics': %s (%s)", mem_reason_s6, err_cat_s6)
+                stages["topics"] = create_initial_stage_entry(
+                    status="failed",
+                    reason=mem_reason_s6,
+                    record_count=0,
+                    duration_seconds=0.0,
+                    error_category=err_cat_s6,
+                )
+                for downstream in CANONICAL_STAGES[6:]:
+                    stages[downstream] = create_initial_stage_entry(
+                        status="skipped",
+                        reason="prior_stage_failure",
+                        record_count=0,
+                        duration_seconds=0.0,
+                        error_category=None,
+                    )
+            else:
+                stage6_entry, topics_path = execute_topic_stage(
+                    reddit_processed_path=reddit_proc_path,
+                    youtube_processed_path=youtube_proc_path,
+                    skip=False,
+                    canonical_output_path=topics_target,
+                    config=resolved_config,
+                    reddit_stage_entry=stage3_entry,
+                    youtube_stage_entry=stage4_entry,
+                )
+                if stage6_entry.get("status") in {"success", "partial"}:
+                    if stage6_entry.get("record_count", 0) == 0:
+                        stage6_entry["status"] = "empty"
+                        stage6_entry["reason"] = "empty_input_dataset"
+                    else:
+                        has_reddit = (stage3_entry.get("status") == "success" and stage3_entry.get("record_count", 0) > 0)
+                        has_youtube = (stage4_entry.get("status") == "success" and stage4_entry.get("record_count", 0) > 0)
+                        if has_reddit and has_youtube:
+                            stage6_entry["status"] = "success"
+                            stage6_entry["reason"] = None
+                        elif has_reddit and not has_youtube:
+                            stage6_entry["status"] = "partial"
+                            stage6_entry["reason"] = "single_platform_reddit_only"
+                        elif has_youtube and not has_reddit:
+                            stage6_entry["status"] = "partial"
+                            stage6_entry["reason"] = "single_platform_youtube_only"
+                        else:
+                            stage6_entry["status"] = "partial"
+                            stage6_entry["reason"] = "single_platform_execution"
+                stages["topics"] = stage6_entry
+
+                graph_target = run_dir / "graph_analysis_results.json"
+                stage7_entry, graph_path = execute_graph_stage(
+                    reddit_processed_path=reddit_proc_path,
+                    youtube_processed_path=youtube_proc_path,
+                    skip=False,
+                    canonical_output_path=graph_target,
+                    config=resolved_config,
+                    reddit_stage_entry=stage3_entry,
+                    youtube_stage_entry=stage4_entry,
+                )
+                if stage7_entry.get("status") in {"success", "partial"}:
+                    if stage7_entry.get("record_count", 0) == 0:
+                        stage7_entry["status"] = "empty"
+                        stage7_entry["reason"] = "empty_input_dataset"
+                    else:
+                        has_reddit = (stage3_entry.get("status") == "success" and stage3_entry.get("record_count", 0) > 0)
+                        has_youtube = (stage4_entry.get("status") == "success" and stage4_entry.get("record_count", 0) > 0)
+                        if has_reddit and has_youtube:
+                            stage7_entry["status"] = "success"
+                            stage7_entry["reason"] = None
+                        elif has_reddit and not has_youtube:
+                            stage7_entry["status"] = "partial"
+                            stage7_entry["reason"] = "single_platform_reddit_only"
+                        elif has_youtube and not has_reddit:
+                            stage7_entry["status"] = "partial"
+                            stage7_entry["reason"] = "single_platform_youtube_only"
+                        else:
+                            stage7_entry["status"] = "partial"
+                            stage7_entry["reason"] = "single_platform_execution"
+                stages["graph"] = stage7_entry
+
+                stage8_entry, _ = execute_neo4j_stage(
+                    graph_artifact_path=graph_path,
+                    skip=args.skip_neo4j,
+                    graph_stage_entry=stage7_entry,
+                    manager=None,
+                    manager_factory=None,
+                )
+                stages["neo4j_persistence"] = stage8_entry
+
+                misinfo_target = run_dir / "misinformation_analysis_results.json"
+                stage9_entry, misinfo_path = execute_misinformation_stage(
+                    reddit_processed_path=reddit_proc_path,
+                    youtube_processed_path=youtube_proc_path,
+                    skip=False,
+                    canonical_output_path=misinfo_target,
+                    config=resolved_config,
+                    reddit_stage_entry=stage3_entry,
+                    youtube_stage_entry=stage4_entry,
+                )
+                if stage9_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
+                    stage9_entry["status"] = "partial"
+                    stage9_entry["reason"] = "single_platform_execution"
+                stages["misinformation"] = stage9_entry
+
+                consolidation_target = run_dir / "consolidated_intelligence.json"
+                stage10_entry, consolidation_path = execute_consolidation_stage(
+                    reddit_processed_path=reddit_proc_path,
+                    youtube_processed_path=youtube_proc_path,
+                    sentiment_path=sentiment_path,
+                    topics_path=topics_path,
+                    graph_path=graph_path,
+                    misinformation_path=misinfo_path,
+                    skip=False,
+                    canonical_output_path=consolidation_target,
+                    config=resolved_config,
+                    reddit_stage_entry=stage3_entry,
+                    youtube_stage_entry=stage4_entry,
+                    sentiment_stage_entry=stage5_entry,
+                    topic_stage_entry=stage6_entry,
+                    graph_stage_entry=stage7_entry,
+                    misinformation_stage_entry=stage9_entry,
+                )
+                if stage10_entry.get("status") == "success" and (skip_r_proc or skip_y_proc):
+                    stage10_entry["status"] = "partial"
+                    stage10_entry["reason"] = "single_platform_execution"
+                stages["consolidation"] = stage10_entry
+
+                stage11_entry, _ = execute_elasticsearch_indexing_stage(
+                    consolidated_path=consolidation_path,
+                    skip=args.skip_elasticsearch,
+                    consolidation_stage_entry=stage10_entry,
+                    client=None,
+                    manifest_path=es_manifest_target,
+                )
+                stages["elasticsearch_indexing"] = stage11_entry
+
+                stage12_entry, _ = execute_kibana_validation_stage(
+                    bundle_path=None,
+                    skip=args.skip_kibana,
+                    indexing_stage_entry=stage11_entry,
+                )
+                stage12_entry["mode"] = "offline_bundle_validation"
+                stage12_entry["scope"] = (
+                    "Offline saved-object bundle schema, reference, and mapping-conformance validation (41 objects)."
+                )
+                stages["kibana_validation"] = stage12_entry
 
         # 4. Manifest assembly and atomic persistence
         manifest = build_execution_manifest(
@@ -6274,6 +6461,7 @@ def run_orchestrated_pipeline(
         print(f"Skip Reddit   : {args.skip_reddit}")
         print(f"Skip YouTube  : {args.skip_youtube}")
         print(f"Skip Neo4j    : {args.skip_neo4j}")
+        print(f"Skip ES       : {args.skip_elasticsearch}")
         print(f"Skip Kibana   : {args.skip_kibana}")
         print("-" * 68)
         for st_name in CANONICAL_STAGES:
