@@ -1,5 +1,5 @@
 # Large-Scale Social Media Intelligence Platform
-*(Repository: [Large-Scale-Social-Media-Intelligence-Platform](https://github.com/dpoo61524-cloud/Large-Scale-Social-Media-Intelligence-Platform))*
+
 
 An end-to-end data engineering and intelligence pipeline designed to ingest, clean, analyze, enrich, index, and visualize multi-source social media data from **Reddit** and **YouTube**.
 
@@ -8,15 +8,6 @@ An end-to-end data engineering and intelligence pipeline designed to ingest, cle
 ## 1. Project Overview & Verification Status
 
 The platform provides a modular, contract-driven architecture designed to process social media content through text normalization, dynamic topic discovery, interaction network modeling, heuristic misinformation risk assessment, multi-source intelligence consolidation, and search indexing.
-
-### 1.1 The Four-Tier Verification Taxonomy
-
-To ensure complete technical transparency for academic and internship evaluation, this repository distinguishes between software architecture, offline unit tests, and physically demonstrated runtime capabilities using a **Four-Tier Verification Taxonomy**:
-
-1. **Implemented in Code:** Concrete Python classes, functions, and configuration exist in the `src/` codebase.
-2. **Tested Offline:** Unit tests, integration contracts, and mock harnesses pass offline via `pytest`.
-3. **Demonstrated at Runtime:** Physically executed and verified in the controlled diagnostic baseline run (`data/runs/run_20261114_101439_02f387a1`) or standalone offline commands.
-4. **Not Yet Verified / Deferred:** Required by the original assignment specification, but currently unverified at runtime due to missing model weights, missing API credentials, unstarted external services, or unrepresentative production inputs.
 
 ### 1.2 Core Capabilities & Verification Ledger
 
@@ -60,25 +51,6 @@ The platform executes processing in a strict, linear dependency order across 12 
   └── 12. kibana_validation ──────> Offline Bundle Validation (41 Saved Objects)
 ```
 
-### Stage Summary & Data Contracts
-
-| Stage # | Stage Identifier | Functional Scope | Primary Output Artifact | Prerequisite Inputs |
-|:---:|---|---|---|---|
-| **1** | `reddit_ingestion` | Fetch Reddit posts (live API or mock fixture) | `reddit_raw_posts.json` | Network API or sample fixture |
-| **2** | `youtube_ingestion` | Fetch YouTube metadata (live API or mock fixture) | `youtube_videos_raw.json` | Network API or sample fixture |
-| **3** | `reddit_preprocessing` | Clean text, demojize, detect language | `reddit_posts_processed.json` | `reddit_raw_posts.json` |
-| **4** | `youtube_preprocessing` | Clean text, demojize, detect language | `youtube_videos_processed.json` | `youtube_videos_raw.json` |
-| **5** | `sentiment` | RoBERTa sentiment polarity scoring | `sentiment_analysis_results.json` | Preprocessed Reddit and/or YouTube |
-| **6** | `topics` | BERTopic thematic cluster extraction | `topic_modeling_results.json` | Preprocessed Reddit and/or YouTube |
-| **7** | `graph` | Entity interaction graph & PageRank | `graph_analysis_results.json` | Preprocessed Reddit and/or YouTube |
-| **8** | `neo4j_persistence` | Cypher transactional graph insertion | Neo4j Graph Database | `graph_analysis_results.json` |
-| **9** | `misinformation` | Stylometric & ML risk assessment | `misinformation_analysis_results.json` | Preprocessed Reddit and/or YouTube |
-| **10** | `consolidation` | Schema-v2 multi-source record join | `consolidated_intelligence.json` | Preprocessed data + Stages 5, 6, 7, 9 |
-| **11** | `elasticsearch_indexing` | Bulk document transformation & indexing | Elasticsearch Cluster | `consolidated_intelligence.json` |
-| **12** | `kibana_validation` | Offline schema & reference bundle validation | 41 Saved Objects Verified | `social_intelligence_dashboards.ndjson` |
-
----
-
 ## 3. Installation & Runtime Prerequisites
 
 ### 3.1 Python Runtime Requirements
@@ -86,7 +58,7 @@ The platform executes processing in a strict, linear dependency order across 12 
 * **Core Execution & Test Environment (Actually Tested)**:
   * **Python 3.14.7** (Windows 10 x64) is the active environment where all core pipeline modules (Stages 1, 2, 5–12) and CLI orchestration run.
 * **Spark NLP Preprocessing Environment (Isolated Environment)**:
-  * **Python 3.12.10** (in an isolated virtual environment, e.g., `venv-spark`) is required for PySpark and Spark NLP preprocessing (Stages 3 & 4). In the Python 3.14 unified environment, Stage 3 executes local procedural regex text normalization.
+  * **Python 3.12.10** (in an isolated virtual environment, e.g., `venv-spark`) is required for PySpark and Spark NLP preprocessing (Stages 3 & 4). In the Python 3.14 unified environment, executes local procedural regex text normalization.
 * **Declared Dependency Compatibility**:
   * Only Python 3.14.7 (core) and Python 3.12.10 (Spark) have been physically tested in this workspace.
 
@@ -273,7 +245,7 @@ python app.py --validate-kibana
 
 ## 9. Analytical Integrity, Methodological Disclosures & Ranking Formulas
 
-### 9.1 Social Interaction Network Graph (Stage 7)
+### 9.1 Social Interaction Network Graph
 
 * **Synthetic Demonstration Fixture**:
   * Evaluated on `data/sample_reddit_interactions.json` (10 Reddit posts across 10 distinct authors with 19 directed `u/<username>` cross-mentions).
@@ -400,32 +372,5 @@ python app.py --validate-kibana
 6. **Non-Crash-Safe Promotion**: Multi-file canonical promotion is exception-safe with an automated rollback ledger within Python execution, but cannot guarantee crash-safety against sudden OS process termination (`SIGKILL`, power failure).
 7. **Production Status**: The platform is an advanced data engineering reference implementation and **is not production-ready** without operational infrastructure deployment, monitoring, and live integration testing.
 
----
-
-## 12. Repository Hygiene & Licensing
-
-* **Clean Repository State**: Runtime output directories (`data/runs/`) and lock files (`*.lock`, `data/.orchestration.lock`) are excluded from version control via `.gitignore`.
-* **Zero Hardcoded Secrets**: Scanned and verified to contain no exposed credentials, API keys, or private tokens.
-* **License**: Private Development / Academic Reference.
 
 ---
-
-## 13. Intern Reflection & Project Ownership
-
-**Intern:** Deeksha M Poojari  
-**Intern ID:** NEX-INT-2026-4945  
-**Program:** Nexvia Internship Program  
-**Project:** Large-Scale Social Media Intelligence Platform  
-
-### 13.1 What I Owned
-* **Pipeline Orchestration & Data Contracts:** Implemented the end-to-end data processing workflow connecting Reddit and YouTube data ingestion, text preprocessing, enrichment, and consolidation.
-* **Preprocessing & Normalization:** Built text cleaning pipelines for emoji decoding, noise removal, and language detection across multi-source posts.
-* **Analytics & Modeling Integration:** Integrated CardiffNLP XLM-RoBERTa multilingual sentiment analysis, BERTopic clustering with memory-safe fallback mechanisms, and NetworkX interaction graph construction with PageRank influencer scoring.
-* **Misinformation Risk Assessment:** Designed stylometric feature extraction (capitalization, punctuation intensity, lexical patterns) and heuristic scoring aligned with the LIAR benchmark.
-* **Kibana Dashboards & Frontend:** Developed 41 Kibana saved objects across 5 analytical dashboards and integrated a responsive React/Vite dashboard interface for live interactive visualization.
-* **Verification & Testing:** Authored and verified offline test suites ensuring robust data contracts, exception handling, and mock fallback execution.
-
-### 13.2 Key Learnings & Engineering Challenges
-1. **Handling Resource Constraints:** Heavy NLP models like BERTopic and RoBERTa require significant memory. Implementing defensive pre-flight checks and fallback statistical clustering ($c\text{-TF-IDF} + \text{MiniBatchKMeans}$) ensured the pipeline never crashes in constrained runtime environments.
-2. **Data Consistency & Error Containment:** Real-world API data can be messy, missing, or rate-limited. Implementing strict Schema-v2 validation and quarantine isolation allowed individual post errors to be isolated without interrupting downstream analytical stages.
-3. **Graph Modeling:** Building interaction graphs from social cross-mentions required balancing directed PageRank, normalized in-degree, and betweenness centrality to avoid ranking biased by raw post volume.
