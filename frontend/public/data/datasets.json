@@ -1,0 +1,33 @@
+{
+  "datasets": [
+    {
+      "id": "run_20261115_200037_7143b1e6",
+      "type": "modern",
+      "label": "Modern Run run_20261115_200037_7143b1e6 (Canonical 500 Records)",
+      "generated_at": "2026-11-15T20:00:44.113900+00:00",
+      "status": "success",
+      "stages": {
+        "reddit_ingestion": "success",
+        "youtube_ingestion": "success",
+        "reddit_preprocessing": "success",
+        "youtube_preprocessing": "success",
+        "sentiment": "success",
+        "topics": "success",
+        "graph": "success",
+        "neo4j_persistence": "skipped",
+        "misinformation": "success",
+        "consolidation": "success",
+        "elasticsearch_indexing": "skipped",
+        "kibana_validation": "skipped"
+      },
+      "available_artifacts": [
+        "consolidated_intelligence.json",
+        "graph_analysis_results.json",
+        "misinformation_analysis_results.json",
+        "sentiment_analysis_results.json",
+        "topic_modeling_results.json"
+      ]
+    }
+  ],
+  "total_datasets": 1
+}

@@ -27,28 +27,98 @@ The platform provides a modular, contract-driven architecture designed to proces
 
 The platform executes processing in a strict, linear dependency order across 12 canonical stages:
 
+```mermaid
+flowchart TD
+    subgraph S1["1. Multi-Source Ingestion Layer"]
+        A1["Reddit API / PRAW<br/>(250 Submissions)"]
+        A2["YouTube Data API v3<br/>(250 Comments)"]
+        A1 --> R1["reddit_posts_raw.json"]
+        A2 --> R2["youtube_videos_raw.json"]
+    end
+
+    subgraph S2["2. Distributed Preprocessing Layer"]
+        R1 --> P1["Spark NLP / Regex Tokenizer<br/>(Noise & URL Stripping)"]
+        R2 --> P2["Emoji Feature Extractor<br/>(Unicode-to-Vector Mapping)"]
+        P1 --> G1["FastText Language Gate<br/>(Language Identification)"]
+        P2 --> G1
+        G1 --> P3["reddit_posts_processed.json"]
+        G1 --> P4["youtube_videos_processed.json"]
+    end
+
+    subgraph S3["3. Analytical Intelligence Engines"]
+        P3 --> E1["RoBERTa Sentiment Engine<br/>(Net Polarity & Confidence)"]
+        P4 --> E1
+        P3 --> E2["BERTopic Thematic Modeler<br/>(c-TF-IDF Cluster Discovery)"]
+        P4 --> E2
+        P3 --> E3["NetworkX & PageRank<br/>(Interaction Graph & Centrality)"]
+        P4 --> E3
+        P3 --> E4["Misinformation Classifier<br/>(Stylometric & Credibility Scoring)"]
+        P4 --> E4
+    end
+
+    subgraph S4["4. Consolidation & Contract Layer"]
+        E1 --> C1["Schema-v2 Consolidator<br/>(Multi-Source Record Join)"]
+        E2 --> C1
+        E3 --> C1
+        E4 --> C1
+        C1 --> C2["consolidated_intelligence.json<br/>(500 Unified Records)"]
+    end
+
+    subgraph S5["5. Analytics & Visualization UI"]
+        C2 --> V1["Local Read-Only Bridge<br/>(Python REST API :8765)"]
+        C2 --> V2["Static Cloud Bundle<br/>(Vercel / Netlify / CDN)"]
+        V1 --> UI["React 19 + TypeScript Dashboard<br/>(Overview | Sentiment | Topics | Graph | Risk | Feed)"]
+        V2 --> UI
+    end
+
+    style S1 fill:#f0f9ff,stroke:#0284c7,stroke-width:2px,color:#0f172a
+    style S2 fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a
+    style S3 fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
+    style S4 fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#0f172a
+    style S5 fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#0f172a
+```
+
+### Stage Execution & Data Flow
+
 ```text
-[Raw Ingestion]
-  ├── 1. reddit_ingestion   ──────> data/raw/reddit_raw_posts.json
-  └── 2. youtube_ingestion  ──────> data/raw/youtube_videos_raw.json
-          │
-[Text Preprocessing]
-  ├── 3. reddit_preprocessing   ──> data/processed/reddit_posts_processed.json
-  └── 4. youtube_preprocessing  ──> data/processed/youtube_videos_processed.json
-          │
-[Analytical Enrichment]
-  ├── 5. sentiment          ──────> data/processed/sentiment_analysis_results.json
-  ├── 6. topics             ──────> data/processed/topic_modeling_results.json
-  ├── 7. graph              ──────> data/processed/graph_analysis_results.json
-  │       │
-  │       └── 8. neo4j_persistence ──> Graph Database (Neo4j Cypher Ingestion)
-  │
-  └── 9. misinformation     ──────> data/processed/misinformation_analysis_results.json
-          │
-[Consolidation & Search Integration]
-  ├── 10. consolidation     ──────> data/processed/consolidated_intelligence.json
-  ├── 11. elasticsearch_indexing ─> Search Engine (Elasticsearch Bulk Indexing)
-  └── 12. kibana_validation ──────> Offline Bundle Validation (41 Saved Objects)
+┌────────────────────────────────────────────────────────────────────────┐
+│                   1. MULTI-SOURCE INGESTION LAYER                      │
+│   • Reddit (PRAW REST API)         • YouTube (Data API v3)            │
+│   → data/raw/reddit_raw_posts.json → data/raw/youtube_videos_raw.json  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                 2. SPARK NLP PREPROCESSING LAYER                       │
+│   • Regex URL & Noise Stripping    • Unicode Emoji-to-Vector Mapping   │
+│   • Case Preservation for Emphasis • FastText Language Identification  │
+│   → reddit_posts_processed.json    → youtube_videos_processed.json     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        ▼                           ▼                           ▼
+┌───────────────┐           ┌───────────────┐           ┌───────────────┐
+│  SENTIMENT    │           │ TOPIC MODEL   │           │ GRAPH & RISK  │
+│ RoBERTa Multi-│           │ BERTopic /    │           │ • PageRank    │
+│ lingual Score │           │ c-TF-IDF      │           │ • Misinfo     │
+│ [Pos/Neu/Neg] │           │ 5 Clusters    │           │   Stylometry  │
+└───────┬───────┘           └───────┬───────┘           └───────┬───────┘
+        └───────────────────────────┼───────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│            3. SCHEMA-V2 CONSOLIDATION & CONTRACT LAYER                 │
+│   • Multi-source envelope join & schema integrity validation           │
+│   → data/runs/run_.../consolidated_intelligence.json (500 records)     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│            4. INTELLIGENCE DASHBOARD & CLOUD DEPLOYMENT                │
+│   • Python Local Read-Only Bridge (:8765) OR Static Cloud Bundle       │
+│   • Interactive React 19 + TypeScript + Tailwind Web Application       │
+│   • Production Deployment Ready for Vercel, Netlify & Render           │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 3. Installation & Runtime Prerequisites
@@ -364,6 +434,8 @@ python app.py --validate-kibana
 
 ## 11. Known Operational Boundaries & Deployment Prerequisites
 
+### 11.1 Backend Pipeline & Infrastructure Boundaries
+
 1. **Live External Services Unverified**: End-to-end integration against live, external clusters (Elasticsearch 8.x, Neo4j 5.x, Kibana 8.x) has not been validated in a live staging/production environment.
 2. **External Cluster Dependencies**: Live bulk indexing requires running Elasticsearch cluster instances with matching network credentials configured in `.env`.
 3. **Local vs. Distributed Locking**: `OrchestrationLock` provides kernel-level advisory locking for a single operating system instance. Distributed multi-server worker deployments require a distributed lock manager (e.g., Redis, ZooKeeper, or etcd).
@@ -372,5 +444,42 @@ python app.py --validate-kibana
 6. **Non-Crash-Safe Promotion**: Multi-file canonical promotion is exception-safe with an automated rollback ledger within Python execution, but cannot guarantee crash-safety against sudden OS process termination (`SIGKILL`, power failure).
 7. **Production Status**: The platform is an advanced data engineering reference implementation and **is not production-ready** without operational infrastructure deployment, monitoring, and live integration testing.
 
+### 11.2 Interactive Web Dashboard & Cloud Deployment (Vercel / Netlify / Render)
+
+The platform includes a responsive, modern single-page analytics application built with **React 19, TypeScript, Vite, and Tailwind CSS** (`frontend/`).
+
+#### Local Runtime Operation
+To run the interactive dashboard locally:
+
+```bash
+# Terminal 1: Launch Local Read-Only Python Bridge API (:8765)
+python tools/bridge/bridge_server.py 8765
+
+# Terminal 2: Launch Vite Development Server (:5173)
+npm --prefix frontend install
+npm --prefix frontend run dev -- --port 5173
+```
+Access the application at **`http://localhost:5173`**.
+
+#### One-Click Cloud Deployment (Zero-Backend Mode)
+The frontend includes pre-packaged canonical dataset artifacts (`frontend/public/data/`) and intelligent dual-mode API routing. If no local Python bridge server is detected, it automatically falls back to embedded static JSON artifacts, enabling **100% free, zero-maintenance cloud hosting**:
+
+* **Deploy to Vercel (Recommended)**:
+  * Connect repository to [Vercel](https://vercel.com).
+  * Build command: `npm --prefix frontend install && npm --prefix frontend run build` (or set Root Directory to `frontend`).
+  * Output directory: `frontend/dist` (handled automatically via `vercel.json` and `frontend/vercel.json`).
+* **Deploy to Netlify**:
+  * Connect repository to [Netlify](https://netlify.com).
+  * Handled automatically via `netlify.toml` (Base: `frontend`, Build: `npm run build`, Publish: `dist`).
+* **Deploy to Render**:
+  * Handled automatically via `render.yaml` for a zero-config static web service.
+
+---
+
+## 12. Repository Hygiene & Licensing
+
+* **Clean Repository State**: Runtime output directories (`data/runs/`) and lock files (`*.lock`, `data/.orchestration.lock`) are excluded from version control via `.gitignore`.
+* **Zero Hardcoded Secrets**: Scanned and verified to contain no exposed credentials, API keys, or private tokens.
+* **License**: Private Development / Academic Reference.
 
 ---

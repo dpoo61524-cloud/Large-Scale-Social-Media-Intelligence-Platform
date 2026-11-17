@@ -1,0 +1,94 @@
+{
+  "run_id": "run_20261115_200037_7143b1e6",
+  "execution_timestamp": "2026-11-15T20:00:44.113900+00:00",
+  "total_duration_seconds": 12.5,
+  "overall_status": "success",
+  "stages": {
+    "reddit_ingestion": {
+      "status": "success",
+      "record_count": 250,
+      "duration_seconds": 0.25,
+      "error_category": null,
+      "reason": null
+    },
+    "youtube_ingestion": {
+      "status": "success",
+      "record_count": 250,
+      "duration_seconds": 0.35,
+      "error_category": null,
+      "reason": null
+    },
+    "reddit_preprocessing": {
+      "status": "success",
+      "record_count": 250,
+      "duration_seconds": 0.85,
+      "error_category": null,
+      "reason": null
+    },
+    "youtube_preprocessing": {
+      "status": "success",
+      "record_count": 250,
+      "duration_seconds": 0.95,
+      "error_category": null,
+      "reason": null
+    },
+    "sentiment": {
+      "status": "success",
+      "record_count": 500,
+      "duration_seconds": 2.1,
+      "error_category": null,
+      "reason": null
+    },
+    "topics": {
+      "status": "success",
+      "record_count": 500,
+      "duration_seconds": 3.5,
+      "error_category": null,
+      "reason": null
+    },
+    "graph": {
+      "status": "success",
+      "record_count": 16,
+      "duration_seconds": 0.45,
+      "error_category": null,
+      "reason": null
+    },
+    "neo4j_persistence": {
+      "status": "skipped",
+      "record_count": 0,
+      "duration_seconds": 0.0,
+      "error_category": null,
+      "reason": "stage_skipped_by_user"
+    },
+    "misinformation": {
+      "status": "success",
+      "record_count": 500,
+      "duration_seconds": 1.8,
+      "error_category": null,
+      "reason": null
+    },
+    "consolidation": {
+      "status": "success",
+      "record_count": 500,
+      "duration_seconds": 1.2,
+      "error_category": null,
+      "reason": null
+    },
+    "elasticsearch_indexing": {
+      "status": "skipped",
+      "record_count": 0,
+      "duration_seconds": 0.0,
+      "error_category": null,
+      "reason": "stage_skipped_by_user"
+    },
+    "kibana_validation": {
+      "status": "skipped",
+      "record_count": 0,
+      "duration_seconds": 0.0,
+      "error_category": null,
+      "reason": "stage_skipped_by_user"
+    }
+  },
+  "timestamp_utc": "2026-11-15T20:00:44.113900+00:00",
+  "overall_outcome": "success"
+}

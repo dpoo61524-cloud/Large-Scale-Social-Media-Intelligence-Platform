@@ -34,7 +34,49 @@ export class BridgeClientError extends Error {
   }
 }
 
+async function fetchStaticFallback(path: string, signal?: AbortSignal): Promise<unknown> {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+  // Case 1: List datasets
+  if (cleanPath === '/api/v1/datasets') {
+    const res = await fetch('/data/datasets.json', { signal });
+    if (!res.ok) throw new Error(`Static dataset manifest HTTP ${res.status}`);
+    return await res.json();
+  }
+
+  // Case 2: Specific dataset metadata
+  const datasetMatch = cleanPath.match(/^\/api\/v1\/datasets\/([^/]+)$/);
+  if (datasetMatch) {
+    const targetId = decodeURIComponent(datasetMatch[1]);
+    const res = await fetch('/data/datasets.json', { signal });
+    if (!res.ok) throw new Error(`Static dataset manifest HTTP ${res.status}`);
+    const list = (await res.json()) as DatasetListResponse;
+    const found = list.datasets.find((d) => d.id === targetId);
+    if (!found) {
+      throw new BridgeClientError(404, 'dataset_not_found', `Dataset ${targetId} not found in static repository`);
+    }
+    return found;
+  }
+
+  // Case 3: Dataset artifact
+  const artifactMatch = cleanPath.match(/^\/api\/v1\/datasets\/([^/]+)\/artifacts\/([^/]+)$/);
+  if (artifactMatch) {
+    const datasetId = decodeURIComponent(artifactMatch[1]);
+    const artifactName = decodeURIComponent(artifactMatch[2]);
+    const res = await fetch(`/data/runs/${encodeURIComponent(datasetId)}/${encodeURIComponent(artifactName)}`, { signal });
+    if (!res.ok) throw new Error(`Static artifact ${artifactName} HTTP ${res.status}`);
+    return await res.json();
+  }
+
+  throw new Error(`No static fallback mapped for path: ${path}`);
+}
+
 async function performGet(path: string, signal?: AbortSignal): Promise<unknown> {
+  const isStaticOnly = import.meta.env.VITE_STATIC_MODE === 'true';
+  if (isStaticOnly) {
+    return await fetchStaticFallback(path, signal);
+  }
+
   const baseUrl = getBridgeBaseUrl();
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 
@@ -51,15 +93,27 @@ async function performGet(path: string, signal?: AbortSignal): Promise<unknown> 
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw err;
     }
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new BridgeClientError(
-      0,
-      'network_unreachable',
-      `Cannot connect to local bridge at ${baseUrl}. Ensure bridge server is running (${reason}).`
-    );
+    // Attempt static embedded dataset fallback (enables zero-backend deployment on Vercel / Netlify)
+    try {
+      return await fetchStaticFallback(path, signal);
+    } catch {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new BridgeClientError(
+        0,
+        'network_unreachable',
+        `Cannot connect to local bridge at ${baseUrl}. Ensure bridge server is running (${reason}).`
+      );
+    }
   }
 
   if (!resp.ok) {
+    // If backend returns 404 or 500, attempt static fallback
+    try {
+      return await fetchStaticFallback(path, signal);
+    } catch {
+      // Continue to error reporting
+    }
+
     let errorObj: BridgeApiError;
     try {
       const json = await resp.json();

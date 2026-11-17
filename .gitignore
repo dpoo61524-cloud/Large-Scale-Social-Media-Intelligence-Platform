@@ -43,6 +43,11 @@ data/processed/*
 *.json
 !data/sample_reddit_posts.json
 !data/sample_reddit_interactions.json
+!frontend/package.json
+!frontend/tsconfig*.json
+!frontend/vercel.json
+!frontend/public/data/**
+!vercel.json
 *.parquet
 *.tsv
 *.zip
